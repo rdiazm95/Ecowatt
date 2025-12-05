@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ecowatt-db
+    restart: always
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: ecowatt
+      POSTGRES_PASSWORD: ecowatt123
+      POSTGRES_DB: ecowatt_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: ecowatt-pgadmin
+    restart: always
+    ports:
+      - '5050:80'
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ecowatt.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
