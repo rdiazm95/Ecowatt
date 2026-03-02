@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PricesModule } from './prices/prices.module';
 import { EsiosService } from './esios/esios.service';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { EsiosService } from './esios/esios.service';
       inject: [ConfigService],
     }),
     PricesModule,
+    DashboardModule,
   ],
   providers: [EsiosService],
 })
