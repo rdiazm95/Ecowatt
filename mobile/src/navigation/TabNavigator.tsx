@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import DashboardScreen from '../screens/DashboardScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import EstadisticasScreen from '../screens/EstadisticasScreen'; // <-- 1. Importamos la nueva pantalla
 
 const Tab = createBottomTabNavigator();
 
@@ -12,7 +13,7 @@ export default function TabNavigator() {
       screenOptions={{
         tabBarActiveTintColor: '#3498db',
         tabBarInactiveTintColor: 'gray',
-        headerShown: false, // Ocultamos el header feo por defecto
+        headerShown: false,
       }}
     >
       <Tab.Screen 
@@ -24,6 +25,11 @@ export default function TabNavigator() {
         name="Simulador" 
         component={SimuladorScreen} 
         options={{ tabBarLabel: 'Simulador' }}
+      />
+      <Tab.Screen 
+        name="Estadisticas" // <-- 2. Añadimos la pestaña de Estadísticas
+        component={EstadisticasScreen} 
+        options={{ tabBarLabel: 'Estadísticas' }}
       />
       <Tab.Screen 
         name="Profile" 
