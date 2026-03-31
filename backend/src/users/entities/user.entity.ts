@@ -1,6 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany } from 'typeorm';
+import { Device } from '../../devices/entities/device.entity'; // <-- 1. Importar la nueva entidad
 
-@Entity('usuario') // El nombre exacto de la tabla en tu diseño SQL
+@Entity('usuario')
 export class User {
   @PrimaryGeneratedColumn({ name: 'id_usuario' })
   id: number;
@@ -14,5 +15,8 @@ export class User {
   @CreateDateColumn({ name: 'fecha_registro', type: 'timestamp' })
   fechaRegistro: Date;
 
-  // Más adelante añadiremos aquí la relación con Dispositivos y Alertas
+  // --- RELACIÓN CON DISPOSITIVOS ---
+  // Un usuario tiene Muchos dispositivos
+  @OneToMany(() => Device, (device) => device.usuario)
+  dispositivos: Device[];
 }

@@ -7,6 +7,7 @@ import { EsiosService } from './esios/esios.service';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { DevicesModule } from './devices/devices.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AuthModule } from './auth/auth.module';
     DashboardModule,
     UsersModule,
     AuthModule,
+    DevicesModule,
   ],
   providers: [EsiosService],
 })
