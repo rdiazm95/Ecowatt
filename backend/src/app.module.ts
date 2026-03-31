@@ -5,6 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PricesModule } from './prices/prices.module';
 import { EsiosService } from './esios/esios.service';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
     }),
     PricesModule,
     DashboardModule,
+    UsersModule,
+    AuthModule,
   ],
   providers: [EsiosService],
 })
