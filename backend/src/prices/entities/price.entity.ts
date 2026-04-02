@@ -23,4 +23,5 @@ export class Price {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
+  date: string | number | Date;
 }
