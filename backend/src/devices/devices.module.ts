@@ -4,10 +4,12 @@ import { DevicesService } from './devices.service';
 import { DevicesController } from './devices.controller';
 import { Device } from './entities/device.entity';
 
+
 @Module({
   // Importamos la entidad para que TypeORM cree la tabla 'dispositivo'
   imports: [TypeOrmModule.forFeature([Device])],
   controllers: [DevicesController],
   providers: [DevicesService],
+  exports: [DevicesService],
 })
 export class DevicesModule {}

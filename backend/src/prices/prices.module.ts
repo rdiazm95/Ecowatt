@@ -5,6 +5,7 @@ import { PricesController } from './prices.controller';
 import { Price } from './entities/price.entity';
 import { EsiosService } from '../esios/esios.service';
 
+
 @Module({
   imports: [TypeOrmModule.forFeature([Price])],
   controllers: [PricesController],
