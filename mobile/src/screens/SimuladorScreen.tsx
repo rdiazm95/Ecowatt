@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,55 +6,124 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
+import { apiClient } from '../api/client';
+import { loginAndSaveToken } from '../api/auth';
 
 const screenWidth = Dimensions.get('window').width;
 
-// Datos simulados (Mocks) para la UI hasta que tengamos el backend
-const MOCK_DEVICES = [
-  { id: 1, name: 'Lavadora Bosch', icon: '👕', power: 1.5, duration: 2 },
-  { id: 2, name: 'Lavavajillas', icon: '🍽️', power: 2.0, duration: 1.5 },
-  { id: 3, name: 'Horno', icon: '🍳', power: 2.5, duration: 1 },
-  { id: 4, name: 'Frigorífico', icon: '❄️', power: 0.3, duration: 24 },
-];
-
-const MOCK_CHART_DATA = {
-  labels: ['00h', '04h', '08h', '12h', '16h', '20h'],
-  datasets: [
-    {
-      data: [0.08, 0.07, 0.12, 0.15, 0.11, 0.26, 0.22],
-      color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
-      strokeWidth: 3,
-    },
-  ],
-};
-
 export default function SimuladorScreen() {
-  const [selectedDevice, setSelectedDevice] = useState(MOCK_DEVICES[0]);
+  // Estados para manejar los datos reales del backend
+  const [devices, setDevices] = useState<any[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<any>(null);
   const [selectedHour, setSelectedHour] = useState(14); // Hora de inicio simulada
+  const [simulacion, setSimulacion] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // 1. AL CARGAR LA PANTALLA: Login invisible y cargar dispositivos reales
+  useEffect(() => {
+    const initData = async () => {
+      setLoading(true);
+      // EJECUTA EL LOGIN INVISIBLE (Asegúrate de que este usuario exista en tu base de datos)
+      const loggedIn = await loginAndSaveToken('ruben@ecowatt.com', 'MiPassword123');
+      
+      if (loggedIn) {
+        try {
+          // Pedir dispositivos al Backend
+          const resDevices = await apiClient.get('/devices');
+          setDevices(resDevices.data);
+          
+          if (resDevices.data.length > 0) {
+            setSelectedDevice(resDevices.data[0]);
+          }
+        } catch (error) {
+          console.error('Error cargando dispositivos:', error);
+        }
+      }
+      setLoading(false);
+    };
+
+    initData();
+  }, []);
+
+  // 2. CADA VEZ QUE CAMBIA EL DISPOSITIVO O LA HORA: Llamar al algoritmo
+  useEffect(() => {
+    const calcular = async () => {
+      if (!selectedDevice) return;
+      try {
+        const resSimulador = await apiClient.post('/simulator/calculate', {
+          deviceId: selectedDevice.id,
+          startHour: selectedHour
+        });
+        setSimulacion(resSimulador.data);
+      } catch (error) {
+        console.error('Error calculando coste:', error);
+      }
+    };
+
+    calcular();
+  }, [selectedDevice, selectedHour]);
+
+  // MIENTRAS CARGA, MOSTRAR SPINNER
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#3498db" />
+        <Text style={{ marginTop: 10 }}>Conectando con NestJS...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // SI EL USUARIO NO TIENE DISPOSITIVOS EN LA BD
+  if (devices.length === 0) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ fontSize: 18, fontWeight: 'bold' }}>No tienes electrodomésticos.</Text>
+        <Text style={{ marginTop: 10 }}>Ve a Perfil para añadir uno.</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // PREPARAR DATOS DINÁMICOS PARA LA GRÁFICA
+  const chartLabels = simulacion && simulacion.desglose.length > 0 
+    ? simulacion.desglose.map((d: any) => d.hora) 
+    : ['--'];
+  
+  const chartData = simulacion && simulacion.desglose.length > 0 
+    ? simulacion.desglose.map((d: any) => parseFloat(d.costeFranja)) 
+    : [0];
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.pageTitle}>EcoWatt - Simulador</Text>
 
-        {/* 1. SECCIÓN: Mis Electrodomésticos */}
+        {/* 1. SECCIÓN: Mis Electrodomésticos Reales */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Mis Electrodomésticos</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
-            {MOCK_DEVICES.map((device) => {
-              const isSelected = selectedDevice.id === device.id;
+            {devices.map((device) => {
+              const isSelected = selectedDevice?.id === device.id;
+              
+              // Asignamos un emoji dinámico según el tipo
+              let icon = '⚡';
+              if (device.tipo === 'lavadora') icon = '👕';
+              if (device.tipo === 'lavavajillas') icon = '🍽️';
+              if (device.tipo === 'horno') icon = '🍳';
+              if (device.tipo === 'frigorifico') icon = '❄️';
+
               return (
                 <TouchableOpacity
                   key={device.id}
                   style={[styles.deviceCard, isSelected && styles.deviceCardSelected]}
                   onPress={() => setSelectedDevice(device)}
                 >
-                  <Text style={styles.deviceIcon}>{device.icon}</Text>
+                  <Text style={styles.deviceIcon}>{icon}</Text>
                   <Text style={[styles.deviceName, isSelected && styles.deviceNameSelected]}>
-                    {device.name}
+                    {device.nombre}
                   </Text>
                 </TouchableOpacity>
               );
@@ -62,11 +131,14 @@ export default function SimuladorScreen() {
           </ScrollView>
         </View>
 
-        {/* 2. SECCIÓN: Gráfica y Selector de Uso */}
+        {/* 2. SECCIÓN: Gráfica Dinámica y Selector de Uso */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Precios de Hoy vs. Uso Previsto</Text>
           <LineChart
-            data={MOCK_CHART_DATA}
+            data={{
+              labels: chartLabels,
+              datasets: [{ data: chartData }],
+            }}
             width={screenWidth - 64}
             height={180}
             yAxisLabel="€"
@@ -76,7 +148,7 @@ export default function SimuladorScreen() {
               backgroundColor: '#ffffff',
               backgroundGradientFrom: '#ffffff',
               backgroundGradientTo: '#ffffff',
-              decimalPlaces: 2,
+              decimalPlaces: 4, // 4 decimales para mayor precisión en la gráfica
               color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
               labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
               style: { borderRadius: 16 },
@@ -84,23 +156,39 @@ export default function SimuladorScreen() {
             bezier
             style={styles.chart}
           />
-          {/* Aquí en el futuro meteremos un Slider real (ej. @react-native-community/slider) */}
-          <View style={styles.sliderMock}>
-            <Text style={styles.sliderText}>Hora seleccionada: {selectedHour}:00h</Text>
+          
+          {/* Selector de hora interactivo */}
+          <View style={styles.stepperContainer}>
+            <TouchableOpacity 
+              style={styles.stepperButton} 
+              onPress={() => setSelectedHour(prev => Math.max(0, prev - 1))}
+            >
+              <Text style={styles.stepperText}>- 1h</Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.sliderText}>Hora de inicio: {selectedHour}:00h</Text>
+            
+            <TouchableOpacity 
+              style={styles.stepperButton} 
+              onPress={() => setSelectedHour(prev => Math.min(23, prev + 1))}
+            >
+              <Text style={styles.stepperText}>+ 1h</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* 3. SECCIÓN: Coste Estimado */}
+        {/* 3. SECCIÓN: Coste Estimado Real */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Coste Estimado de Uso</Text>
-          <Text style={styles.mainCost}>0.85 €</Text>
+          <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
           
-          <View style={styles.detailsContainer}>
-            <Text style={styles.detailText}>Duración prevista: {selectedDevice.duration} horas</Text>
-            <Text style={styles.detailText}>Consumo: {(selectedDevice.power * selectedDevice.duration).toFixed(1)} kWh</Text>
-            <Text style={styles.detailText}>Precio medio franja: 0.236 €/kWh</Text>
-            <Text style={styles.detailText}>Precio referencia valle: 0.13 €/kWh</Text>
-          </View>
+          {simulacion && (
+            <View style={styles.detailsContainer}>
+              <Text style={styles.detailText}>Dispositivo: {simulacion.dispositivo}</Text>
+              <Text style={styles.detailText}>Duración prevista: {simulacion.duracionTotal}</Text>
+              <Text style={styles.detailText}>Consumo total: {simulacion.consumoTotalKwh} kWh</Text>
+            </View>
+          )}
 
           <TouchableOpacity style={styles.button}>
             <Text style={styles.buttonText}>Confirmar y programar uso</Text>
@@ -181,12 +269,25 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignSelf: 'center',
   },
-  sliderMock: {
-    marginTop: 10,
-    alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#f1f2f6',
-    borderRadius: 8,
+  stepperContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginTop: 10, 
+    paddingHorizontal: 10, 
+    backgroundColor: '#f1f2f6', 
+    borderRadius: 8, 
+    paddingVertical: 10 
+  },
+  stepperButton: { 
+    backgroundColor: '#3498db', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 6 
+  },
+  stepperText: { 
+    color: '#fff', 
+    fontWeight: 'bold' 
   },
   sliderText: {
     color: '#2c3e50',
