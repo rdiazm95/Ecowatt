@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,14 @@ import {
   TouchableOpacity,
   Switch,
   TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as SecureStore from 'expo-secure-store';
+import { apiClient } from '../api/client';
 
-// Iconos mockeados para el selector de tipo
+// Iconos para el selector de tipo
 const TIPOS_ELECTRODOMESTICOS = [
   { id: 'lavadora', icon: '👕' },
   { id: 'lavavajillas', icon: '🍽️' },
@@ -20,12 +24,16 @@ const TIPOS_ELECTRODOMESTICOS = [
   { id: 'tv', icon: '📺' },
 ];
 
-export default function ProfileScreen() {
-  // Estados para las Alertas
+export default function ProfileScreen({ navigation }: any) {
+  // --- ESTADOS DEL BACKEND ---
+  const [user, setUser] = useState<any>(null);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+
+  // --- ESTADOS DE LA UI ORIGINAL ---
   const [alertasActivas, setAlertasActivas] = useState(true);
   const [umbralPrecio, setUmbralPrecio] = useState('0.15');
-
-  // Estados para el Formulario de Nuevo Electrodoméstico
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [nuevoDispositivo, setNuevoDispositivo] = useState({
     nombre: '',
@@ -34,17 +42,111 @@ export default function ProfileScreen() {
     duracion: '',
   });
 
+  // 1. Cargar Datos al inicio
+  useEffect(() => {
+    fetchProfileAndDevices();
+  }, []);
+
+  const fetchProfileAndDevices = async () => {
+    try {
+      setLoading(true);
+      const resUser = await apiClient.get('/auth/perfil');
+      setUser(resUser.data.usuario);
+
+      const resDevices = await apiClient.get('/devices');
+      setDevices(resDevices.data);
+    } catch (error) {
+      console.error('Error al cargar datos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 2. Función para añadir electrodoméstico
+  const handleAddDevice = async () => {
+    if (!nuevoDispositivo.nombre || !nuevoDispositivo.potencia || !nuevoDispositivo.duracion) {
+      Alert.alert('Error', 'Por favor, rellena todos los campos.');
+      return;
+    }
+
+    setAdding(true);
+    try {
+      await apiClient.post('/devices', {
+        nombre: nuevoDispositivo.nombre,
+        tipo: nuevoDispositivo.tipo,
+        potencia: parseFloat(nuevoDispositivo.potencia),
+        duracion: parseFloat(nuevoDispositivo.duracion),
+      });
+      
+      // Limpiamos formulario y recargamos
+      setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '', duracion: '' });
+      setMostrarFormulario(false);
+      fetchProfileAndDevices();
+      
+      Alert.alert('Éxito', 'Electrodoméstico creado correctamente.');
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo añadir el dispositivo.');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  // 3. Función para borrar electrodoméstico
+  const handleDeleteDevice = async (id: number) => {
+    Alert.alert(
+      'Eliminar',
+      '¿Borrar este electrodoméstico?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await apiClient.delete(`/devices/${id}`);
+              fetchProfileAndDevices();
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo eliminar.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 4. Función para cerrar sesión
+  const handleLogout = async () => {
+    await SecureStore.deleteItemAsync('userToken');
+    navigation.replace('Welcome'); // Volvemos a la pantalla principal
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#3498db" />
+        <Text style={{ marginTop: 10, color: '#7f8c8d' }}>Cargando tu perfil...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // Generar iniciales dinámicas para el avatar
+  const iniciales = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
+
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         
-        {/* Cabecera del Perfil */}
+        {/* Cabecera del Perfil Real */}
         <View style={styles.header}>
           <View style={styles.avatarMock}>
-            <Text style={styles.avatarText}>RD</Text>
+            <Text style={styles.avatarText}>{iniciales}</Text>
           </View>
-          <Text style={styles.userName}>Rubén Díaz</Text>
-          <Text style={styles.userEmail}>ruben@ecowatt.com</Text>
+          <Text style={styles.userName}>{user?.email.split('@')[0]}</Text>
+          <Text style={styles.userEmail}>{user?.email}</Text>
+          
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Cerrar Sesión</Text>
+          </TouchableOpacity>
         </View>
 
         {/* 1. SECCIÓN: Configuración de Alertas */}
@@ -149,11 +251,39 @@ export default function ProfileScreen() {
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, duracion: t})}
               />
 
-              <TouchableOpacity style={styles.primaryButton}>
-                <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={handleAddDevice} disabled={adding}>
+                {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
               </TouchableOpacity>
             </View>
           )}
+
+          {/* Lista de Dispositivos Reales */}
+          {!mostrarFormulario && (
+            <View style={styles.deviceListContainer}>
+              {devices.length === 0 ? (
+                <Text style={styles.emptyText}>No tienes electrodomésticos guardados.</Text>
+              ) : (
+                devices.map((device) => {
+                  const iconObj = TIPOS_ELECTRODOMESTICOS.find(t => t.id === device.tipo);
+                  const icon = iconObj ? iconObj.icon : '⚡';
+                  
+                  return (
+                    <View key={device.id} style={styles.deviceItem}>
+                      <Text style={styles.deviceItemIcon}>{icon}</Text>
+                      <View style={styles.deviceItemInfo}>
+                        <Text style={styles.deviceItemName}>{device.nombre}</Text>
+                        <Text style={styles.deviceItemDetails}>{device.potencia} kW • {device.duracion} h</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => handleDeleteDevice(device.id)} style={styles.deleteBtn}>
+                        <Text style={styles.deleteIcon}>🗑️</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+
         </View>
 
         <View style={{ height: 40 }} />
@@ -166,18 +296,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
   scrollContainer: { padding: 16 },
   header: { alignItems: 'center', marginBottom: 24, marginTop: 10 },
-  avatarMock: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: '#3498db',
-    justifyContent: 'center', alignItems: 'center', marginBottom: 12,
-  },
+  avatarMock: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#3498db', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   avatarText: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
-  userName: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50' },
+  userName: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50', textTransform: 'capitalize' },
   userEmail: { fontSize: 14, color: '#7f8c8d', marginTop: 4 },
-  card: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16,
-    elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1, shadowRadius: 3,
-  },
+  logoutButton: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: '#ffeaa7' },
+  logoutText: { color: '#d35400', fontWeight: 'bold', fontSize: 12 },
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, color: '#2c3e50' },
   description: { fontSize: 13, color: '#7f8c8d', marginBottom: 16 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -197,4 +322,15 @@ const styles = StyleSheet.create({
   iconButton: { borderWidth: 1, borderColor: '#bdc3c7', borderRadius: 8, padding: 12, width: '30%', alignItems: 'center', backgroundColor: '#f8f9fa' },
   iconButtonActive: { borderColor: '#3498db', backgroundColor: '#ebf5fb' },
   iconText: { fontSize: 24 },
+  
+  // Estilos añadidos para la lista de dispositivos reales
+  deviceListContainer: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#ecf0f1', paddingTop: 16 },
+  emptyText: { textAlign: 'center', color: '#7f8c8d', fontStyle: 'italic', marginTop: 10 },
+  deviceItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#e9ecef' },
+  deviceItemIcon: { fontSize: 28, marginRight: 12 },
+  deviceItemInfo: { flex: 1 },
+  deviceItemName: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50' },
+  deviceItemDetails: { fontSize: 13, color: '#7f8c8d', marginTop: 2 },
+  deleteBtn: { padding: 8 },
+  deleteIcon: { fontSize: 18 },
 });
