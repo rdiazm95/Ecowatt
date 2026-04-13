@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native'; // <-- IMPORTAMOS LA MAGIA AQUÍ
 import { LineChart } from 'react-native-chart-kit';
 import { apiClient } from '../api/client';
 
@@ -21,28 +22,35 @@ export default function SimuladorScreen() {
   const [simulacion, setSimulacion] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. CARGAR DISPOSITIVOS (Ya no hacemos login invisible, usamos el token real)
-  useEffect(() => {
-    const fetchDevices = async () => {
-      setLoading(true);
-      try {
-        const resDevices = await apiClient.get('/devices');
-        setDevices(resDevices.data);
-        
-        if (resDevices.data.length > 0) {
-          setSelectedDevice(resDevices.data[0]);
+  // 1. CARGAR DISPOSITIVOS (Se ejecuta cada vez que entras a la pestaña)
+  useFocusEffect(
+    useCallback(() => {
+      const fetchDevices = async () => {
+        try {
+          const resDevices = await apiClient.get('/devices');
+          setDevices(resDevices.data);
+          
+          // Lógica para mantener seleccionado el dispositivo actual, 
+          // o elegir el primero si es la primera vez (o si borraste el que tenías seleccionado)
+          setSelectedDevice((prevDevice: any) => {
+            if (resDevices.data.length === 0) return null;
+            if (!prevDevice) return resDevices.data[0];
+            const stillExists = resDevices.data.find((d: any) => d.id === prevDevice.id);
+            return stillExists ? stillExists : resDevices.data[0];
+          });
+
+        } catch (error) {
+          console.error('Error recargando dispositivos:', error);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('Error cargando dispositivos:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+      };
 
-    fetchDevices();
-  }, []);
+      fetchDevices();
+    }, [])
+  );
 
-  // 2. LLAMAR AL ALGORITMO
+  // 2. LLAMAR AL ALGORITMO CUANDO CAMBIAS HORA O DISPOSITIVO
   useEffect(() => {
     const calcular = async () => {
       if (!selectedDevice) return;
@@ -60,24 +68,27 @@ export default function SimuladorScreen() {
     calcular();
   }, [selectedDevice, selectedHour]);
 
-  if (loading) {
+  // Pantalla de carga inicial
+  if (loading && devices.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#3498db" />
-        <Text style={{ marginTop: 10 }}>Cargando datos...</Text>
+        <Text style={{ marginTop: 10, color: '#7f8c8d' }}>Cargando datos...</Text>
       </SafeAreaView>
     );
   }
 
+  // Si no hay dispositivos
   if (devices.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold' }}>No tienes electrodomésticos.</Text>
-        <Text style={{ marginTop: 10 }}>Ve a Perfil para añadir uno.</Text>
+        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#2c3e50' }}>No tienes electrodomésticos.</Text>
+        <Text style={{ marginTop: 10, color: '#7f8c8d' }}>Ve a la pestaña Perfil para añadir el primero.</Text>
       </SafeAreaView>
     );
   }
 
+  // Datos para la gráfica
   const chartLabels = simulacion && simulacion.desglose.length > 0 
     ? simulacion.desglose.map((d: any) => d.hora) 
     : ['--'];
@@ -91,6 +102,7 @@ export default function SimuladorScreen() {
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.pageTitle}>EcoWatt - Simulador</Text>
 
+        {/* 1. SECCIÓN: Mis Electrodomésticos */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Mis Electrodomésticos</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
@@ -101,7 +113,9 @@ export default function SimuladorScreen() {
               if (device.tipo === 'lavadora') icon = '👕';
               if (device.tipo === 'lavavajillas') icon = '🍽️';
               if (device.tipo === 'horno') icon = '🍳';
+              if (device.tipo === 'microondas') icon = '🍱';
               if (device.tipo === 'frigorifico') icon = '❄️';
+              if (device.tipo === 'tv') icon = '📺';
 
               return (
                 <TouchableOpacity
@@ -119,6 +133,7 @@ export default function SimuladorScreen() {
           </ScrollView>
         </View>
 
+        {/* 2. SECCIÓN: Gráfica Dinámica */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Precios de Hoy vs. Uso Previsto</Text>
           <LineChart
@@ -163,6 +178,7 @@ export default function SimuladorScreen() {
           </View>
         </View>
 
+        {/* 3. SECCIÓN: Coste Estimado */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Coste Estimado de Uso</Text>
           <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
