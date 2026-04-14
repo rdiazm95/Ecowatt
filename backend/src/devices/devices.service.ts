@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Device } from './entities/device.entity';
@@ -27,7 +27,25 @@ export class DevicesService {
     });
   }
 
-  // 3. ELIMINAR: Borra un dispositivo (asegurándose de que sea del usuario correcto)
+  // 3. ACTUALIZAR (NUEVO): Modifica los datos de un dispositivo existente
+  async update(deviceId: number, userId: number, updateData: Partial<Device>): Promise<Device> {
+    // Primero buscamos que el dispositivo exista y pertenezca a este usuario
+    const device = await this.devicesRepository.findOne({
+      where: { id: deviceId, usuario: { id: userId } },
+    });
+
+    if (!device) {
+      throw new NotFoundException('Dispositivo no encontrado o no te pertenece');
+    }
+
+    // Fusionamos los datos antiguos con los nuevos (ej. la nueva potencia)
+    Object.assign(device, updateData);
+    
+    // Lo guardamos de vuelta en la base de datos
+    return this.devicesRepository.save(device);
+  }
+
+  // 4. ELIMINAR: Borra un dispositivo (asegurándose de que sea del usuario correcto)
   async remove(deviceId: number, userId: number): Promise<void> {
     await this.devicesRepository.delete({ 
       id: deviceId, 

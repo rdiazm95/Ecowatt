@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, Patch, UseGuards, Request } from '@nestjs/common';
 import { DevicesService } from './devices.service';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -20,6 +20,14 @@ export class DevicesController {
   findAll(@Request() req) {
     const userId = req.user.id;
     return this.devicesService.findAllByUserId(userId);
+  }
+
+  // NUEVO: Endpoint para actualizar un electrodoméstico
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateDeviceDto: any, @Request() req) {
+    const userId = req.user.id;
+    // El '+' delante de id lo convierte de String a Number
+    return this.devicesService.update(+id, userId, updateDeviceDto);
   }
 
   // Endpoint para borrar un electrodoméstico

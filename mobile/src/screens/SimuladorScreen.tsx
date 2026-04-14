@@ -7,108 +7,174 @@ import {
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native'; // <-- IMPORTAMOS LA MAGIA AQUÍ
+import { useFocusEffect } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
+import MultiSlider from '@ptomasroos/react-native-multi-slider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '../api/client';
 
 const screenWidth = Dimensions.get('window').width;
 
 export default function SimuladorScreen() {
+  const currentRealHour = new Date().getHours();
+
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<any>(null);
-  const [selectedHour, setSelectedHour] = useState(14);
+  const [programaciones, setProgramaciones] = useState<any[]>([]); 
+  
+  const [selectedHour, setSelectedHour] = useState(currentRealHour);
+  const [editedDuracion, setEditedDuracion] = useState('1');
+  const [editedPotencia, setEditedPotencia] = useState('');
+  
   const [simulacion, setSimulacion] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // 1. CARGAR DISPOSITIVOS (Se ejecuta cada vez que entras a la pestaña)
   useFocusEffect(
     useCallback(() => {
-      const fetchDevices = async () => {
-        try {
-          const resDevices = await apiClient.get('/devices');
-          setDevices(resDevices.data);
-          
-          // Lógica para mantener seleccionado el dispositivo actual, 
-          // o elegir el primero si es la primera vez (o si borraste el que tenías seleccionado)
-          setSelectedDevice((prevDevice: any) => {
-            if (resDevices.data.length === 0) return null;
-            if (!prevDevice) return resDevices.data[0];
-            const stillExists = resDevices.data.find((d: any) => d.id === prevDevice.id);
-            return stillExists ? stillExists : resDevices.data[0];
-          });
-
-        } catch (error) {
-          console.error('Error recargando dispositivos:', error);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchDevices();
+      fetchData();
     }, [])
   );
 
-  // 2. LLAMAR AL ALGORITMO CUANDO CAMBIAS HORA O DISPOSITIVO
-  useEffect(() => {
-    const calcular = async () => {
-      if (!selectedDevice) return;
-      try {
-        const resSimulador = await apiClient.post('/simulator/calculate', {
-          deviceId: selectedDevice.id,
-          startHour: selectedHour
-        });
-        setSimulacion(resSimulador.data);
-      } catch (error) {
-        console.error('Error calculando coste:', error);
+  const fetchData = async () => {
+    try {
+      const resDevices = await apiClient.get('/devices');
+      setDevices(resDevices.data);
+      
+      setSelectedDevice((prevDevice: any) => {
+        if (resDevices.data.length === 0) return null;
+        if (!prevDevice) return resDevices.data[0];
+        const stillExists = resDevices.data.find((d: any) => d.id === prevDevice.id);
+        return stillExists ? stillExists : resDevices.data[0];
+      });
+
+      // Auto-limpieza por fecha: Si entramos mañana, la lista de hoy se borra.
+      const hoyStr = new Date().toISOString().split('T')[0];
+      const fechaGuardada = await AsyncStorage.getItem('fecha_programacion');
+      const savedProgs = await AsyncStorage.getItem('programaciones_hoy');
+
+      if (fechaGuardada !== hoyStr) {
+        await AsyncStorage.removeItem('programaciones_hoy');
+        await AsyncStorage.setItem('fecha_programacion', hoyStr);
+        setProgramaciones([]);
+      } else if (savedProgs) {
+        setProgramaciones(JSON.parse(savedProgs));
       }
-    };
 
-    calcular();
-  }, [selectedDevice, selectedHour]);
+    } catch (error) {
+      console.error('Error cargando datos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Pantalla de carga inicial
+  // Sincronización instantánea de los inputs cuando cambias de aparato
+  useEffect(() => {
+    if (selectedDevice) {
+      setEditedPotencia(selectedDevice.potencia.toString());
+      setEditedDuracion(selectedDevice.duracion ? selectedDevice.duracion.toString() : '1');
+    }
+  }, [selectedDevice]);
+
+  // Cálculo Principal
+  const calcular = async (disp = selectedDevice, hr = selectedHour, dur = editedDuracion, pot = editedPotencia) => {
+    if (!disp) return;
+    try {
+      const duracionNum = parseFloat(dur.replace(',', '.')) || 1;
+      const potenciaNum = parseFloat(pot.replace(',', '.')) || 0; 
+      
+      if (potenciaNum === 0) return; // Protege contra divisiones por cero o envíos vacíos
+
+      const resSimulador = await apiClient.post('/simulator/calculate', {
+        deviceId: disp.id,
+        startHour: hr,
+        duracion: duracionNum,
+        potencia: potenciaNum 
+      });
+      setSimulacion(resSimulador.data);
+    } catch (error) {
+      console.error('Error calculando coste:', error);
+    }
+  };
+
+  // Escuchador Robusto: Se dispara SIEMPRE que cambien los valores
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      calcular(selectedDevice, selectedHour, editedDuracion, editedPotencia);
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [selectedDevice, selectedHour, editedDuracion, editedPotencia]);
+
+  const handleProgramar = async () => {
+    if (!selectedDevice || !simulacion) return;
+    setSaving(true);
+    
+    try {
+      const potenciaNum = parseFloat(editedPotencia.replace(',', '.'));
+      
+      try {
+        await apiClient.patch(`/devices/${selectedDevice.id}`, { potencia: potenciaNum });
+      } catch (apiError) {
+        console.warn('Aviso: Backend no respondió al PATCH. Guardando en memoria local de todos modos.');
+      }
+
+      const nuevaProg = {
+        id: Date.now().toString(),
+        nombre: selectedDevice.nombre,
+        potencia: editedPotencia,
+        duracion: editedDuracion,
+        horaInicio: selectedHour,
+        coste: simulacion.costeTotalEuros,
+        kwh: simulacion.consumoTotalKwh
+      };
+
+      const actualizadas = [...programaciones, nuevaProg];
+      setProgramaciones(actualizadas);
+      await AsyncStorage.setItem('programaciones_hoy', JSON.stringify(actualizadas));
+      
+      Alert.alert('¡Añadido! ✅', `${selectedDevice.nombre} programado a las ${selectedHour}:00h.`);
+    } catch (error) {
+      Alert.alert('Error', 'Problema al guardar en la memoria del móvil.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const eliminarProgramacion = async (id: string) => {
+    const filtradas = programaciones.filter(p => p.id !== id);
+    setProgramaciones(filtradas);
+    await AsyncStorage.setItem('programaciones_hoy', JSON.stringify(filtradas));
+  };
+
   if (loading && devices.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#3498db" />
-        <Text style={{ marginTop: 10, color: '#7f8c8d' }}>Cargando datos...</Text>
       </SafeAreaView>
     );
   }
 
-  // Si no hay dispositivos
-  if (devices.length === 0) {
-    return (
-      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#2c3e50' }}>No tienes electrodomésticos.</Text>
-        <Text style={{ marginTop: 10, color: '#7f8c8d' }}>Ve a la pestaña Perfil para añadir el primero.</Text>
-      </SafeAreaView>
-    );
-  }
+  const duracionActual = parseFloat(editedDuracion.replace(',', '.')) || 1;
+  const endHour = Math.min(24, selectedHour + duracionActual); 
+  const isPastHour = selectedHour < currentRealHour;
 
-  // Datos para la gráfica
-  const chartLabels = simulacion && simulacion.desglose.length > 0 
-    ? simulacion.desglose.map((d: any) => d.hora) 
-    : ['--'];
-  
-  const chartData = simulacion && simulacion.desglose.length > 0 
-    ? simulacion.desglose.map((d: any) => parseFloat(d.costeFranja)) 
-    : [0];
+  const chartLabels = simulacion && simulacion.desglose.length > 0 ? simulacion.desglose.map((d: any, index: number) => index % 4 === 0 ? d.hora : '') : ['--'];
+  const chartData = simulacion && simulacion.desglose.length > 0 ? simulacion.desglose.map((d: any) => parseFloat(d.costeFranja)) : [0];
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.pageTitle}>EcoWatt - Simulador</Text>
+        <Text style={styles.pageTitle}>Programador Diario</Text>
 
-        {/* 1. SECCIÓN: Mis Electrodomésticos */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Mis Electrodomésticos</Text>
+          <Text style={styles.sectionTitle}>1. Selecciona un electrodoméstico</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
             {devices.map((device) => {
               const isSelected = selectedDevice?.id === device.id;
-              
               let icon = '⚡';
               if (device.tipo === 'lavadora') icon = '👕';
               if (device.tipo === 'lavavajillas') icon = '🍽️';
@@ -118,84 +184,151 @@ export default function SimuladorScreen() {
               if (device.tipo === 'tv') icon = '📺';
 
               return (
-                <TouchableOpacity
-                  key={device.id}
-                  style={[styles.deviceCard, isSelected && styles.deviceCardSelected]}
-                  onPress={() => setSelectedDevice(device)}
-                >
+                <TouchableOpacity key={device.id} style={[styles.deviceCard, isSelected && styles.deviceCardSelected]} onPress={() => setSelectedDevice(device)}>
                   <Text style={styles.deviceIcon}>{icon}</Text>
-                  <Text style={[styles.deviceName, isSelected && styles.deviceNameSelected]}>
-                    {device.nombre}
-                  </Text>
+                  <Text style={[styles.deviceName, isSelected && styles.deviceNameSelected]}>{device.nombre}</Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         </View>
 
-        {/* 2. SECCIÓN: Gráfica Dinámica */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Precios de Hoy vs. Uso Previsto</Text>
-          <LineChart
-            data={{
-              labels: chartLabels,
-              datasets: [{ data: chartData }],
-            }}
-            width={screenWidth - 64}
-            height={180}
-            yAxisLabel="€"
-            yAxisSuffix=""
-            withDots={true}
-            chartConfig={{
-              backgroundColor: '#ffffff',
-              backgroundGradientFrom: '#ffffff',
-              backgroundGradientTo: '#ffffff',
-              decimalPlaces: 4,
-              color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
-              style: { borderRadius: 16 },
-            }}
-            bezier
-            style={styles.chart}
-          />
+          <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
           
-          <View style={styles.stepperContainer}>
-            <TouchableOpacity 
-              style={styles.stepperButton} 
-              onPress={() => setSelectedHour(prev => Math.max(0, prev - 1))}
-            >
-              <Text style={styles.stepperText}>- 1h</Text>
-            </TouchableOpacity>
+          {/* Mostramos el gráfico solo si hay simulación para evitar que se vea blanco antes de tiempo */}
+          {simulacion ? (
+            <LineChart
+              data={{ labels: chartLabels, datasets: [{ data: chartData }] }}
+              width={screenWidth - 64}
+              height={180}
+              yAxisLabel="€"
+              yAxisSuffix=""
+              withInnerLines={false}
+              chartConfig={{
+                backgroundColor: '#ffffff',
+                backgroundGradientFrom: '#ffffff',
+                backgroundGradientTo: '#ffffff',
+                decimalPlaces: 4,
+                color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+                style: { borderRadius: 16 },
+                propsForDots: { r: '3', strokeWidth: '2', stroke: '#3498db' }
+              }}
+              bezier
+              style={styles.chart}
+            />
+          ) : (
+             <View style={{ height: 180, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator color="#3498db" />
+                <Text style={{color: '#bdc3c7', marginTop: 10}}>Cargando curva...</Text>
+             </View>
+          )}
+          
+          <View style={styles.sliderContainer}>
+            <Text style={styles.sliderLabel}>
+              Franja de uso: <Text style={styles.hourValue}>{selectedHour.toString().padStart(2, '0')}:00h</Text> a <Text style={styles.hourValue}>{endHour.toString().padStart(2, '0')}:00h</Text>
+            </Text>
             
-            <Text style={styles.sliderText}>Hora de inicio: {selectedHour}:00h</Text>
-            
-            <TouchableOpacity 
-              style={styles.stepperButton} 
-              onPress={() => setSelectedHour(prev => Math.min(23, prev + 1))}
-            >
-              <Text style={styles.stepperText}>+ 1h</Text>
-            </TouchableOpacity>
+            {isPastHour && (
+              <Text style={styles.pastWarning}>⏳ Estás simulando una hora del pasado.</Text>
+            )}
+
+            <View style={styles.multiSliderWrapper}>
+              <MultiSlider
+                values={[selectedHour, endHour]}
+                sliderLength={screenWidth - 84}
+                onValuesChange={(values) => {
+                  setSelectedHour(values[0]);
+                  setEditedDuracion((values[1] - values[0]).toString());
+                }}
+                min={0}
+                max={24}
+                step={1}
+                allowOverlap={false}
+                snapped={true}
+                minMarkerOverlapDistance={1}
+                selectedStyle={{ backgroundColor: '#3498db', height: 5 }}
+                unselectedStyle={{ backgroundColor: '#ecf0f1', height: 5 }}
+                markerStyle={{
+                  backgroundColor: '#fff',
+                  height: 24, width: 24, borderRadius: 12, borderWidth: 2, borderColor: '#3498db',
+                  elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 2,
+                }}
+              />
+            </View>
+            <View style={styles.sliderTicks}>
+              <Text style={styles.tickText}>00h</Text>
+              <Text style={styles.tickText}>06h</Text>
+              <Text style={styles.tickText}>12h</Text>
+              <Text style={styles.tickText}>18h</Text>
+              <Text style={styles.tickText}>24h</Text>
+            </View>
           </View>
         </View>
 
-        {/* 3. SECCIÓN: Coste Estimado */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Coste Estimado de Uso</Text>
+          <Text style={styles.sectionTitle}>3. Ajustes y Confirmación</Text>
           <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
           
           {simulacion && (
             <View style={styles.detailsContainer}>
-              <Text style={styles.detailText}>Dispositivo: {simulacion.dispositivo}</Text>
-              <Text style={styles.detailText}>Duración prevista: {simulacion.duracionTotal}</Text>
-              <Text style={styles.detailText}>Consumo total: {simulacion.consumoTotalKwh} kWh</Text>
+              <View style={styles.editRow}>
+                 <View style={styles.editInputGroup}>
+                   <Text style={styles.editLabel}>Potencia (kW)</Text>
+                   <TextInput style={styles.editInput} keyboardType="numeric" value={editedPotencia} onChangeText={setEditedPotencia} />
+                 </View>
+                 <View style={styles.editInputGroup}>
+                   <Text style={styles.editLabel}>Duración (h)</Text>
+                   <TextInput style={[styles.editInput, { backgroundColor: '#f1f2f6', color: '#95a5a6' }]} editable={false} value={editedDuracion} />
+                 </View>
+              </View>
+
+              {simulacion.recomendacion && (
+                <View style={[
+                  styles.alertBox, 
+                  simulacion.recomendacion.franja.includes('CARA') ? styles.alertRed : 
+                  simulacion.recomendacion.franja.includes('BARATA') ? styles.alertGreen : 
+                  styles.alertYellow
+                ]}>
+                  <Text style={styles.alertTitle}>Estás en una franja {simulacion.recomendacion.franja}</Text>
+                  
+                  {parseFloat(simulacion.recomendacion.ahorro) > 0.01 && (
+                    <Text style={styles.alertSub}>💡 Muévelo a las {simulacion.recomendacion.horaOptima}:00h de <Text style={{fontWeight: 'bold', textTransform: 'uppercase'}}>{simulacion.recomendacion.diaOptimo}</Text> para ahorrar {simulacion.recomendacion.ahorro}€</Text>
+                  )}
+
+                  {simulacion.recomendacion.avisoManana && (
+                    <Text style={styles.alertWait}>⏳ {simulacion.recomendacion.avisoManana}</Text>
+                  )}
+                </View>
+              )}
             </View>
           )}
 
-          <TouchableOpacity style={styles.button}>
-            <Text style={styles.buttonText}>Confirmar y programar uso</Text>
+          <TouchableOpacity style={styles.button} onPress={handleProgramar} disabled={saving}>
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>AÑADIR A MI PROGRAMACIÓN</Text>}
           </TouchableOpacity>
         </View>
-        
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Usos Programados para Hoy</Text>
+          {programaciones.length === 0 ? (
+            <Text style={styles.emptyText}>No has programado nada aún. Añade tu primer electrodoméstico arriba.</Text>
+          ) : (
+            programaciones.map(prog => (
+              <View key={prog.id} style={styles.progItem}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.progName}>{prog.nombre} <Text style={{fontWeight:'normal', fontSize: 12}}>({prog.potencia} kW)</Text></Text>
+                  <Text style={styles.progTime}>🕒 {prog.horaInicio}:00h - {prog.duracion}h  |  <Text style={{fontWeight:'bold', color:'#e74c3c'}}>{prog.coste} €</Text></Text>
+                </View>
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => eliminarProgramacion(prog.id)}>
+                  <Text style={{fontSize: 20}}>🗑️</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
+
         <View style={{ height: 30 }} />
       </ScrollView>
     </SafeAreaView>
@@ -215,13 +348,35 @@ const styles = StyleSheet.create({
   deviceName: { fontSize: 12, textAlign: 'center', color: '#7f8c8d' },
   deviceNameSelected: { color: '#2980b9', fontWeight: '600' },
   chart: { marginVertical: 8, borderRadius: 16, alignSelf: 'center' },
-  stepperContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingHorizontal: 10, backgroundColor: '#f1f2f6', borderRadius: 8, paddingVertical: 10 },
-  stepperButton: { backgroundColor: '#3498db', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  stepperText: { color: '#fff', fontWeight: 'bold' },
-  sliderText: { color: '#2c3e50', fontWeight: '500' },
+  
+  sliderContainer: { marginTop: 10, paddingHorizontal: 5 },
+  sliderLabel: { fontSize: 14, color: '#34495e', textAlign: 'center', marginBottom: 5 },
+  hourValue: { fontWeight: 'bold', color: '#3498db', fontSize: 16 },
+  pastWarning: { color: '#e74c3c', fontSize: 12, textAlign: 'center', marginBottom: 10, fontStyle: 'italic' },
+  multiSliderWrapper: { alignItems: 'center' },
+  sliderTicks: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 0, marginTop: 5 },
+  tickText: { fontSize: 10, color: '#bdc3c7', fontWeight: 'bold' },
+
   mainCost: { fontSize: 32, fontWeight: '800', color: '#2c3e50', textAlign: 'center', marginVertical: 10 },
   detailsContainer: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#ecf0f1', paddingTop: 10 },
-  detailText: { fontSize: 13, color: '#7f8c8d', marginBottom: 4 },
+  editRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  editInputGroup: { flex: 1, marginHorizontal: 4 },
+  editLabel: { fontSize: 11, color: '#7f8c8d', marginBottom: 4, fontWeight: '600' },
+  editInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#bdc3c7', borderRadius: 8, padding: 10, color: '#2c3e50', textAlign: 'center', fontWeight: 'bold' },
   button: { marginTop: 16, backgroundColor: '#3498db', padding: 14, borderRadius: 8, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 14 }
+  buttonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  
+  alertBox: { marginTop: 16, padding: 12, borderRadius: 8, borderWidth: 1 }, 
+  alertRed: { backgroundColor: '#fadbd8', borderColor: '#e74c3c' }, 
+  alertGreen: { backgroundColor: '#d5f5e3', borderColor: '#2ecc71' }, 
+  alertYellow: { backgroundColor: '#fcf3cf', borderColor: '#f1c40f' },
+  alertTitle: { fontWeight: 'bold', fontSize: 14, color: '#2c3e50' }, 
+  alertSub: { fontSize: 13, marginTop: 6, color: '#34495e', fontStyle: 'italic' },
+  alertWait: { fontSize: 12, marginTop: 8, color: '#d35400', fontWeight: 'bold', fontStyle: 'italic' },
+  
+  progItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#ecf0f1' }, 
+  progName: { fontWeight: 'bold', color: '#2c3e50', fontSize: 15 }, 
+  progTime: { color: '#7f8c8d', fontSize: 13, marginTop: 4 }, 
+  emptyText: { fontStyle: 'italic', color: '#95a5a6', textAlign: 'center', marginTop: 10 },
+  deleteBtn: { padding: 10, backgroundColor: '#fdf2e9', borderRadius: 8 }
 });

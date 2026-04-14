@@ -61,7 +61,11 @@ const App = () => {
   const avg = data.today.avg;
 
   const chartData = {
-    labels: prices.map((p) => p.hour.toString().padStart(2, '0') + 'h'),
+    // MODIFICACIÓN AQUÍ: Mostramos el texto solo cada 4 horas. 
+    // Las demás horas devuelven un string vacío para no solaparse.
+    labels: prices.map((p) => 
+      p.hour % 4 === 0 ? `${p.hour.toString().padStart(2, '0')}h` : ''
+    ),
     datasets: [
       {
         data: prices.map((p) => p.priceKwh),
@@ -73,7 +77,7 @@ const App = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollContainer}>
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>EcoWatt - Hoy</Text>
 
         {/* Precio actual */}
@@ -108,6 +112,7 @@ const App = () => {
             height={250}
             yAxisLabel="€"
             yAxisSuffix=""
+            withInnerLines={false} // Opcional: Quita las líneas de fondo para que se vea aún más limpio
             chartConfig={{
               backgroundColor: '#ffffff',
               backgroundGradientFrom: '#ffffff',
@@ -119,111 +124,62 @@ const App = () => {
                 borderRadius: 16,
               },
               propsForDots: {
-                r: '2',
+                r: '3', // Hacemos los puntitos un poco más visibles
                 strokeWidth: '2',
                 stroke: '#3498db',
               },
             }}
             bezier
             style={styles.chart}
-            verticalLabelRotation={-45}
-            xLabelsOffset={10}
+            // Eliminados verticalLabelRotation y xLabelsOffset para que se alinee natural
           />
         </View>
 
         {/* Resumen */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Resumen del día</Text>
-          <Text>Mínimo: {data.today.min.toFixed(4)} €/kWh</Text>
-          <Text>Máximo: {data.today.max.toFixed(4)} €/kWh</Text>
-          <Text>Medio: {data.today.avg.toFixed(4)} €/kWh</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Mínimo:</Text>
+            <Text style={[styles.summaryValue, { color: '#2ecc71' }]}>{data.today.min.toFixed(4)} €/kWh</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Medio:</Text>
+            <Text style={[styles.summaryValue, { color: '#f1c40f' }]}>{data.today.avg.toFixed(4)} €/kWh</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Máximo:</Text>
+            <Text style={[styles.summaryValue, { color: '#e74c3c' }]}>{data.today.max.toFixed(4)} €/kWh</Text>
+          </View>
+          
           <Text style={styles.tomorrowText}>
             {data.tomorrow.message}
           </Text>
         </View>
+        <View style={{ height: 30 }} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#f5f6fa',
-  },
-  scrollContainer: {
-    padding: 16,
-  },
-  center: { 
-    flex: 1, 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    padding: 16,
-  },
-  title: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#2c3e50',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  sectionTitle: { 
-    fontSize: 18, 
-    fontWeight: '600', 
-    marginBottom: 12,
-    color: '#34495e',
-  },
-  currentPrice: { 
-    fontSize: 28, 
-    fontWeight: '800', 
-    marginBottom: 4,
-    color: '#2c3e50',
-    textAlign: 'center',
-  },
-  currentMwh: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  semaphore: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignSelf: 'center',
-  },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 16,
-    alignSelf: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  error: { 
-    color: '#e74c3c', 
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  tomorrowText: {
-    marginTop: 12,
-    fontStyle: 'italic',
-    color: '#3498db',
-    textAlign: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#f5f6fa' },
+  scrollContainer: { padding: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#2c3e50' },
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#34495e' },
+  currentPrice: { fontSize: 32, fontWeight: '800', marginBottom: 4, color: '#2c3e50', textAlign: 'center' },
+  currentMwh: { fontSize: 14, color: '#7f8c8d', marginBottom: 16, textAlign: 'center' },
+  semaphore: { width: 40, height: 40, borderRadius: 20, alignSelf: 'center', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 2 },
+  chart: { marginVertical: 8, borderRadius: 16, alignSelf: 'center' },
+  loadingText: { marginTop: 12, fontSize: 16, color: '#7f8c8d' },
+  error: { color: '#e74c3c', fontSize: 16, textAlign: 'center' },
+  tomorrowText: { marginTop: 16, fontStyle: 'italic', color: '#3498db', textAlign: 'center', fontWeight: '500' },
+  
+  // Estilos añadidos para que el Resumen quede mejor alineado
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#ecf0f1' },
+  summaryLabel: { fontSize: 16, color: '#7f8c8d', fontWeight: '500' },
+  summaryValue: { fontSize: 16, fontWeight: 'bold' }
 });
 
 export default App;

@@ -15,23 +15,39 @@ export class PricesService {
     private esiosService: EsiosService,
   ) {}
 
-  // Ejecutar todos los días a las 21:00 (los precios se publican ~20:00 - 20:30)
+  // Ejecutar todos los días a las 21:00
   @Cron('0 0 21 * * *')
   async fetchTomorrowPrices(): Promise<void> {
-    this.logger.log('Iniciando descarga de precios para mañana...');
+    this.logger.log('CRON: Iniciando descarga de precios para mañana...');
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     await this.fetchAndSavePrices(tomorrow);
   }
 
-  // Ejecutar al iniciar la aplicación para obtener precios de hoy
+  // Ejecutar al iniciar la aplicación para obtener precios
   async onModuleInit(): Promise<void> {
     const today = new Date();
     const existingPrices = await this.getPricesByDate(today);
     
     if (existingPrices.length === 0) {
-      this.logger.log('No hay precios de hoy, descargando...');
+      this.logger.log('ARRANQUE: No hay precios de hoy, descargando...');
       await this.fetchAndSavePrices(today);
+    }
+
+    // Novedad: Si arranco el servidor tarde (después de las 20:30) y no tengo los de mañana, los bajo.
+    const now = new Date();
+    if (now.getHours() >= 20 && now.getMinutes() >= 30 || now.getHours() >= 21) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowPrices = await this.getPricesByDate(tomorrow);
+      if (tomorrowPrices.length === 0) {
+        this.logger.log('ARRANQUE: Es tarde y no tengo los precios de mañana. Descargando...');
+        try {
+          await this.fetchAndSavePrices(tomorrow);
+        } catch (e) {
+          this.logger.warn('ESIOS aún no ha publicado los precios de mañana.');
+        }
+      }
     }
   }
 
@@ -51,7 +67,6 @@ export class PricesService {
           indicatorId: 1001,
         });
 
-        // Evitar duplicados
         const existing = await this.priceRepository.findOne({
           where: { datetime: price.datetime },
         });
@@ -96,5 +111,25 @@ export class PricesService {
 
   async getTodayPrices(): Promise<Price[]> {
     return this.getPricesByDate(new Date());
+  }
+
+  // AÑADIDO: PATRÓN "SELF-HEALING" (Auto-rescate)
+  async getTomorrowPrices(): Promise<Price[]> {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    let prices = await this.getPricesByDate(tomorrow);
+
+    // Si alguien pide los de mañana, está vacío, y ya son pasadas las 20:30...
+    const now = new Date();
+    if (prices.length === 0 && (now.getHours() >= 21 || (now.getHours() === 20 && now.getMinutes() >= 30))) {
+      this.logger.log('RESCATE: Petición de precios de mañana recibida. Intentando descargar al vuelo...');
+      try {
+        prices = await this.fetchAndSavePrices(tomorrow);
+      } catch (error) {
+        this.logger.warn('RESCATE: Intento fallido. ESIOS aún no los ha publicado.');
+      }
+    }
+
+    return prices;
   }
 }

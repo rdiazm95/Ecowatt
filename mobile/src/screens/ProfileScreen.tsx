@@ -35,11 +35,12 @@ export default function ProfileScreen({ navigation }: any) {
   const [alertasActivas, setAlertasActivas] = useState(true);
   const [umbralPrecio, setUmbralPrecio] = useState('0.15');
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  
+  // Ya no pedimos duración en el estado
   const [nuevoDispositivo, setNuevoDispositivo] = useState({
     nombre: '',
     tipo: 'lavadora',
     potencia: '',
-    duracion: '',
   });
 
   // 1. Cargar Datos al inicio
@@ -64,7 +65,8 @@ export default function ProfileScreen({ navigation }: any) {
 
   // 2. Función para añadir electrodoméstico
   const handleAddDevice = async () => {
-    if (!nuevoDispositivo.nombre || !nuevoDispositivo.potencia || !nuevoDispositivo.duracion) {
+    // Validamos solo nombre y potencia
+    if (!nuevoDispositivo.nombre || !nuevoDispositivo.potencia) {
       Alert.alert('Error', 'Por favor, rellena todos los campos.');
       return;
     }
@@ -75,11 +77,11 @@ export default function ProfileScreen({ navigation }: any) {
         nombre: nuevoDispositivo.nombre,
         tipo: nuevoDispositivo.tipo,
         potencia: parseFloat(nuevoDispositivo.potencia),
-        duracion: parseFloat(nuevoDispositivo.duracion),
+        duracion: 1, // <--- Valor por defecto para la base de datos
       });
       
       // Limpiamos formulario y recargamos
-      setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '', duracion: '' });
+      setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '' });
       setMostrarFormulario(false);
       fetchProfileAndDevices();
       
@@ -117,7 +119,7 @@ export default function ProfileScreen({ navigation }: any) {
   // 4. Función para cerrar sesión
   const handleLogout = async () => {
     await SecureStore.deleteItemAsync('userToken');
-    navigation.replace('Welcome'); // Volvemos a la pantalla principal
+    navigation.replace('Welcome');
   };
 
   if (loading) {
@@ -129,7 +131,6 @@ export default function ProfileScreen({ navigation }: any) {
     );
   }
 
-  // Generar iniciales dinámicas para el avatar
   const iniciales = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
 
   return (
@@ -242,14 +243,7 @@ export default function ProfileScreen({ navigation }: any) {
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
               />
 
-              <Text style={styles.label}>Duración Típica (horas)</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Ej: 2"
-                keyboardType="numeric"
-                value={nuevoDispositivo.duracion}
-                onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, duracion: t})}
-              />
+              {/* ELIMINADO EL CAMPO DURACIÓN */}
 
               <TouchableOpacity style={styles.primaryButton} onPress={handleAddDevice} disabled={adding}>
                 {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
@@ -272,7 +266,8 @@ export default function ProfileScreen({ navigation }: any) {
                       <Text style={styles.deviceItemIcon}>{icon}</Text>
                       <View style={styles.deviceItemInfo}>
                         <Text style={styles.deviceItemName}>{device.nombre}</Text>
-                        <Text style={styles.deviceItemDetails}>{device.potencia} kW • {device.duracion} h</Text>
+                        {/* Ya no mostramos las horas aquí, solo la potencia */}
+                        <Text style={styles.deviceItemDetails}>{device.potencia} kW</Text>
                       </View>
                       <TouchableOpacity onPress={() => handleDeleteDevice(device.id)} style={styles.deleteBtn}>
                         <Text style={styles.deleteIcon}>🗑️</Text>
@@ -323,7 +318,6 @@ const styles = StyleSheet.create({
   iconButtonActive: { borderColor: '#3498db', backgroundColor: '#ebf5fb' },
   iconText: { fontSize: 24 },
   
-  // Estilos añadidos para la lista de dispositivos reales
   deviceListContainer: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#ecf0f1', paddingTop: 16 },
   emptyText: { textAlign: 'center', color: '#7f8c8d', fontStyle: 'italic', marginTop: 10 },
   deviceItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#e9ecef' },
