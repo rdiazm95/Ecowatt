@@ -79,11 +79,16 @@ export class PricesService {
       this.logger.log(`Guardados ${prices.length} precios para ${date.toDateString()}`);
       return prices;
     } catch (error) {
-      this.logger.error(`Error guardando precios: ${error.message}`);
+      if (error instanceof Error) {
+        this.logger.error(`Error guardando precios: ${error.message}`);
+      } else {
+        this.logger.error(`Error guardando precios: ${String(error)}`);
+      }
       throw error;
     }
   }
 
+  // --- MÉTODO MODIFICADO CON EL PATRÓN SELF-HEALING ---
   async getPricesByDate(date: Date): Promise<Price[]> {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -91,12 +96,26 @@ export class PricesService {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    return this.priceRepository.find({
+    // 1. Buscamos en la base de datos local primero
+    let prices = await this.priceRepository.find({
       where: {
         datetime: Between(startOfDay, endOfDay),
       },
       order: { datetime: 'ASC' },
     });
+
+    // 2. Si no hay datos para esta fecha en nuestra BD, los pedimos a ESIOS
+    if (prices.length === 0) {
+      this.logger.log(`No hay datos locales para ${date.toDateString()}. Descargando de ESIOS...`);
+      try {
+        // fetchAndSavePrices ya se encarga de guardar en BD y retornar el array de precios
+        prices = await this.fetchAndSavePrices(date);
+      } catch (error) {
+        this.logger.warn(`No se pudieron descargar los precios históricos para ${date.toDateString()}`);
+      }
+    }
+
+    return prices;
   }
 
   async getCurrentPrice(): Promise<Price | null> {
