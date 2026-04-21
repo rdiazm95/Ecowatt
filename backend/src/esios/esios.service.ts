@@ -36,9 +36,10 @@ export class EsiosService {
       this.logger.log(`Datos PVPC obtenidos para ${startDate}`);
       return response.data;
     } catch (error) {
-      this.logger.error(`Error obteniendo datos ESIOS: ${error.message}`);
+      // Usamos (error as Error) para acceder a .message
+      this.logger.error(`Error obteniendo datos ESIOS: ${(error as Error).message}`);
       throw error;
-    }
+  }
   }
 
   private formatDate(date: Date): string {
