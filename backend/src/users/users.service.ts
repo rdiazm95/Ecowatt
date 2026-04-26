@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, IsNull } from 'typeorm'; // <-- Añadido Not e IsNull
+import { Repository, Not, IsNull } from 'typeorm';
 import { User } from './entities/user.entity';
 
 @Injectable()
@@ -50,7 +50,7 @@ export class UsersService {
   }
 
   // ==========================================
-  // NUEVO: BUSCAR USUARIOS PARA EL CRON JOB
+  // BUSCAR USUARIOS PARA EL CRON JOB
   // ==========================================
   async getUsersWithActiveAlerts(): Promise<User[]> {
     return this.usersRepository.find({
@@ -59,5 +59,34 @@ export class UsersService {
         expoPushToken: Not(IsNull()), // Solo usuarios que tengan un token válido
       },
     });
+  }
+
+  // ==========================================
+  // NUEVO: FUNCIONES PARA RECUPERAR CONTRASEÑA
+  // ==========================================
+  
+  // Guarda el código de 6 dígitos generado y su caducidad
+  async saveResetToken(userId: number, code: string, expires: Date): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    
+    user.resetPasswordCode = code;
+    user.resetPasswordExpires = expires;
+    return this.usersRepository.save(user);
+  }
+
+  // Actualiza la contraseña y borra el código para que no se use dos veces
+  async updatePassword(userId: number, newPasswordHash: string): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    
+    user.passwordHash = newPasswordHash;
+    user.resetPasswordCode = null; // Borramos el código
+    user.resetPasswordExpires = null; // Borramos la caducidad
+    return this.usersRepository.save(user);
   }
 }
