@@ -29,3 +29,7 @@ postgres_data/
 
 # Testing
 coverage/
+
+# Firebase (claves privadas - ¡NUNCA subir a GitHub!)
+firebase-service-account.json
+mobile/google-services.json
