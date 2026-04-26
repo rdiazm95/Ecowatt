@@ -20,18 +20,28 @@ export class User {
   dispositivos: Device[];
 
   // ==========================================
-  // NUEVAS COLUMNAS PARA ALERTAS DE PRECIO
+  // COLUMNAS PARA ALERTAS DE PRECIO
   // ==========================================
 
-  // Indica si el usuario tiene el interruptor de la foto activado
+  // Indica si el usuario tiene el interruptor activado
   @Column({ name: 'alerta_precio_activa', type: 'boolean', default: false })
   alertaPrecioActiva: boolean;
 
-  // El precio límite que el usuario pone en el input de la foto
+  // El precio límite que el usuario pone en el input
   @Column({ name: 'alerta_precio_objetivo', type: 'float', nullable: true, default: 0 })
-  alertaPrecioObjetivo: number;
+  alertaPrecioObjetivo: number | null; // <-- Añadido | null por precaución
 
   // La "dirección" del móvil para enviarle la notificación push
   @Column({ name: 'expo_push_token', type: 'varchar', length: 255, nullable: true })
-  expoPushToken: string;
+  expoPushToken: string | null; // <-- Añadido | null por precaución
+
+  // ==========================================
+  // NUEVO: COLUMNAS PARA RECUPERAR CONTRASEÑA
+  // ==========================================
+  
+  @Column({ name: 'reset_password_code', type: 'varchar', length: 6, nullable: true })
+  resetPasswordCode: string | null; 
+
+  @Column({ name: 'reset_password_expires', type: 'timestamp', nullable: true })
+  resetPasswordExpires: Date | null; 
 }

@@ -17,7 +17,7 @@ export class AuthController {
     return this.authService.login(body.email, body.password);
   }
 
-  // --- NUEVO ENDPOINT PROTEGIDO ---
+  // --- ENDPOINT PROTEGIDO ---
   @UseGuards(AuthGuard('jwt')) // ESTA ES LA CERRADURA
   @Get('perfil')
   getProfile(@Request() req) {
@@ -27,5 +27,22 @@ export class AuthController {
       mensaje: '¡Has entrado a la zona VIP!',
       usuario: req.user
     };
+  }
+
+  // ==========================================
+  // NUEVO: RUTAS DE RECUPERACIÓN DE CONTRASEÑA
+  // ==========================================
+  
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body() body: Record<string, any>) {
+    return this.authService.forgotPassword(body.email);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body() body: Record<string, any>) {
+    // Recibe el email, el código de 6 dígitos y la nueva contraseña elegida
+    return this.authService.resetPassword(body.email, body.code, body.newPassword);
   }
 }
