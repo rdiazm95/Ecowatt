@@ -1,9 +1,8 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-// SUSTITUYE ESTA IP POR LA DE TU ORDENADOR (ej: 192.168.1.33)
-// Mantén el :3000 al final
-const API_URL = 'http://10.0.2.2:3000';
+// Tu nueva URL de Render (PRODUCCIÓN)
+const API_URL = 'https://ecowatt-sgim.onrender.com';
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -12,13 +11,13 @@ export const apiClient = axios.create({
   },
 });
 
-// "Interceptor": Antes de que salga cualquier petición de la app, haz esto:
+// Interceptor: Antes de que salga cualquier petición de la app, añade el token
 apiClient.interceptors.request.use(
   async (config) => {
-    // 1. Busca el token en la caja fuerte del móvil
+    // 1. Buscamos el token en SecureStore
     const token = await SecureStore.getItemAsync('userToken');
     
-    // 2. Si hay token, pégalo en la cabecera (Authorization: Bearer <token>)
+    // 2. Si hay token, lo pegamos en la cabecera de la petición
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

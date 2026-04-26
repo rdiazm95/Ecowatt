@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -22,5 +22,30 @@ export class UsersService {
       passwordHash,
     });
     return this.usersRepository.save(newUser);
+  }
+
+  // ==========================================
+  // NUEVO: CONFIGURACIÓN DE ALERTAS DE PRECIO
+  // ==========================================
+  async updateAlertSettings(
+    userId: number,
+    alertaPrecioActiva: boolean,
+    alertaPrecioObjetivo: number,
+    expoPushToken?: string,
+  ): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    user.alertaPrecioActiva = alertaPrecioActiva;
+    user.alertaPrecioObjetivo = alertaPrecioObjetivo;
+
+    if (expoPushToken) {
+      user.expoPushToken = expoPushToken;
+    }
+
+    return this.usersRepository.save(user);
   }
 }
