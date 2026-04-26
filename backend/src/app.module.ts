@@ -24,7 +24,17 @@ import { SimulatorModule } from './simulator/simulator.module';
         password: configService.get('DATABASE_PASSWORD'),
         database: configService.get('DATABASE_NAME'),
         autoLoadEntities: true,
-        synchronize: true, // Solo en desarrollo
+        synchronize: true, // Magia para que cree las tablas solas
+        
+        // ==========================================
+        // CONFIGURACIÓN OBLIGATORIA PARA LA NUBE (SSL)
+        // ==========================================
+        ssl: true,
+        extra: {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        },
       }),
       inject: [ConfigService],
     }),
