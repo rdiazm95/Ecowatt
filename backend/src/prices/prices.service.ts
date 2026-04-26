@@ -4,6 +4,8 @@ import { Repository, Between } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Price } from './entities/price.entity';
 import { EsiosService } from '../esios/esios.service';
+import { UsersService } from '../users/users.service'; // <-- Añadido
+import axios from 'axios'; // <-- Añadido para mandar la notificación Push
 
 @Injectable()
 export class PricesService {
@@ -13,6 +15,7 @@ export class PricesService {
     @InjectRepository(Price)
     private priceRepository: Repository<Price>,
     private esiosService: EsiosService,
+    private usersService: UsersService, // <-- Inyectado aquí
   ) {}
 
   // Ejecutar todos los días a las 21:00
@@ -150,5 +153,70 @@ export class PricesService {
     }
 
     return prices;
+  }
+
+  // ==========================================
+  // EL CENTINELA: CRON JOB DE ALERTAS
+  // ==========================================
+  
+  // Se ejecuta exactamente cada hora en punto (ej: 14:00:00, 15:00:00)
+  @Cron('0 * * * *')
+  async checkAndSendAlerts() {
+    this.logger.log('🕵️‍♂️ Centinela despertando: Comprobando alertas de precio...');
+
+    try {
+      // 1. Conseguir la hora actual exacta
+      const ahora = new Date();
+      ahora.setMinutes(0, 0, 0);
+
+      // Buscamos el precio de esta hora usando tu campo 'datetime'
+      const precioActual = await this.priceRepository.findOne({
+        where: { datetime: ahora },
+      });
+
+      if (!precioActual) {
+        this.logger.warn('No hay precios almacenados para esta hora.');
+        return;
+      }
+
+      // Usamos el valueKwh que ya calculaste previamente al guardar
+      const precioKwh = precioActual.valueKwh;
+      this.logger.log(`Precio actual de la red: ${precioKwh.toFixed(5)} €/kWh`);
+
+      // 2. Traer a los usuarios apuntados a la alerta
+      const usuarios = await this.usersService.getUsersWithActiveAlerts();
+      
+      if (usuarios.length === 0) {
+        this.logger.log('No hay usuarios con alertas activas para revisar.');
+        return;
+      }
+
+      // 3. Evaluar y Disparar
+      let alertasEnviadas = 0;
+
+      for (const user of usuarios) {
+        // Comparamos el precio (Asegurando que alertaPrecioObjetivo exista)
+        if (user.alertaPrecioObjetivo && precioKwh <= user.alertaPrecioObjetivo) {
+          
+          const pushMessage = {
+            to: user.expoPushToken,
+            sound: 'default',
+            title: '¡Luz Barata Detectada! ⚡️',
+            body: `El precio acaba de bajar a ${precioKwh.toFixed(3)} €/kWh. ¡Es el momento perfecto para encender tus electrodomésticos!`,
+            data: { precioKwh: precioKwh },
+          };
+
+          await axios.post('https://exp.host/--/api/v2/push/send', pushMessage);
+          
+          alertasEnviadas++;
+          this.logger.log(`✅ Alerta enviada a usuario ${user.email} (Objetivo: ${user.alertaPrecioObjetivo})`);
+        }
+      }
+
+      this.logger.log(`Centinela vuelve a dormir. Se enviaron ${alertasEnviadas} notificaciones.`);
+
+    } catch (error) {
+      this.logger.error('Error durante la ejecución del Centinela de alertas', error);
+    }
   }
 }

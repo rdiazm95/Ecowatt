@@ -21,3 +21,20 @@ export async function loginAndSaveToken(email: string, pass: string) {
     return false;
   }
 }
+
+// ==========================================
+// NUEVA FUNCIÓN: Guardar configuración de Alertas
+// ==========================================
+export async function updateAlertSettings(alertaActiva: boolean, precioObjetivo: number, pushToken?: string) {
+  try {
+    const response = await apiClient.patch('/users/alert-settings', {
+      alertaActiva,
+      precioObjetivo,
+      pushToken,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error al guardar la configuración de alertas en la API:', error);
+    throw error; // Lanzamos el error para que la pantalla pueda mostrar un mensaje si falla
+  }
+}
