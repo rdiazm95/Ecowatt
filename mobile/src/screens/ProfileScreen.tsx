@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications'; // <-- Añadido
+import Constants from 'expo-constants'; // <-- AÑADIDO: Para leer el app.json
 import { apiClient } from '../api/client';
 import { updateAlertSettings } from '../api/auth'; // <-- Añadido
 
@@ -95,7 +96,20 @@ export default function ProfileScreen({ navigation }: any) {
           return;
         }
 
-        const tokenData = await Notifications.getExpoPushTokenAsync();
+        // <-- AÑADIDO: Leer el Project ID del app.json
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+        
+        if (!projectId) {
+          Alert.alert('Error', 'No se encontró el Project ID. Revisa tu app.json y reinicia el servidor.');
+          setIsSavingAlert(false);
+          return;
+        }
+
+        // <-- AÑADIDO: Pasar el Project ID a la hora de pedir el Token
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId: projectId,
+        });
+        
         pushToken = tokenData.data;
       }
 

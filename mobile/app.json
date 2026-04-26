@@ -28,6 +28,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "33844626-f91a-423e-b5a3-d725f3081327"
+      }
+    },
+    "owner": "nazgulone"
   }
 }

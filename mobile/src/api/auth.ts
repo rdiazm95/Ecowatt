@@ -23,7 +23,7 @@ export async function loginAndSaveToken(email: string, pass: string) {
 }
 
 // ==========================================
-// NUEVA FUNCIÓN: Guardar configuración de Alertas
+// CONFIGURACIÓN DE ALERTAS
 // ==========================================
 export async function updateAlertSettings(alertaActiva: boolean, precioObjetivo: number, pushToken?: string) {
   try {
@@ -36,5 +36,35 @@ export async function updateAlertSettings(alertaActiva: boolean, precioObjetivo:
   } catch (error) {
     console.error('Error al guardar la configuración de alertas en la API:', error);
     throw error; // Lanzamos el error para que la pantalla pueda mostrar un mensaje si falla
+  }
+}
+
+// ==========================================
+// NUEVO: RECUPERACIÓN DE CONTRASEÑA
+// ==========================================
+
+// Paso 1: Solicitar código al correo
+export async function forgotPassword(email: string) {
+  try {
+    const response = await apiClient.post('/auth/forgot-password', { email });
+    return response.data;
+  } catch (error) {
+    console.error('Error al solicitar recuperación de contraseña:', error);
+    throw error; 
+  }
+}
+
+// Paso 2: Validar código y crear nueva contraseña
+export async function resetPassword(email: string, code: string, newPassword: string) {
+  try {
+    const response = await apiClient.post('/auth/reset-password', { 
+      email, 
+      code, 
+      newPassword 
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error al restablecer la contraseña:', error);
+    throw error;
   }
 }
