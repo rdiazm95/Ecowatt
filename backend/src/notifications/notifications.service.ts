@@ -1,6 +1,5 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import * as admin from 'firebase-admin';
-import * as serviceAccount from '../../firebase-service-account.json';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -8,8 +7,10 @@ export class NotificationsService implements OnModuleInit {
 
   onModuleInit() {
     if (!admin.apps.length) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
+      
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+        credential: admin.credential.cert(serviceAccount),
       });
       this.logger.log('Firebase Admin inicializado ✅');
     }
@@ -40,7 +41,6 @@ export class NotificationsService implements OnModuleInit {
     }
   }
 
-  // Alerta específica de franja verde
   async sendFranjaVerdeAlert(expoPushToken: string, precio: number) {
     await this.sendPushNotification(
       expoPushToken,
