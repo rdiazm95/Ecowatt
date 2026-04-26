@@ -40,20 +40,21 @@ import { NotificationsModule } from './notifications/notifications.module';
       inject: [ConfigService],
     }),
 
-    // Configuración de Correos (Resend)
+    // Configuración de Correos (Gmail)
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         transport: {
-          host: 'smtp.resend.com',
+          host: 'smtp.gmail.com',
           port: 587,
+          secure: false,
           auth: {
-            user: 'resend',
-            pass: configService.get('MAIL_PASSWORD'), // API key en variable de entorno
+            user: 'ecowatt.proyecto@gmail.com',
+            pass: configService.get('MAIL_PASSWORD'),
           },
         },
         defaults: {
-          from: '"Soporte EcoWatt" <onboarding@resend.dev>',
+          from: '"Soporte EcoWatt" <ecowatt.proyecto@gmail.com>',
         },
       }),
       inject: [ConfigService],
