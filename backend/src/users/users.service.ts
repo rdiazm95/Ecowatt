@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not, IsNull } from 'typeorm'; // <-- Añadido Not e IsNull
 import { User } from './entities/user.entity';
 
 @Injectable()
@@ -25,7 +25,7 @@ export class UsersService {
   }
 
   // ==========================================
-  // NUEVO: CONFIGURACIÓN DE ALERTAS DE PRECIO
+  // CONFIGURACIÓN DE ALERTAS DE PRECIO
   // ==========================================
   async updateAlertSettings(
     userId: number,
@@ -47,5 +47,17 @@ export class UsersService {
     }
 
     return this.usersRepository.save(user);
+  }
+
+  // ==========================================
+  // NUEVO: BUSCAR USUARIOS PARA EL CRON JOB
+  // ==========================================
+  async getUsersWithActiveAlerts(): Promise<User[]> {
+    return this.usersRepository.find({
+      where: {
+        alertaPrecioActiva: true,
+        expoPushToken: Not(IsNull()), // Solo usuarios que tengan un token válido
+      },
+    });
   }
 }

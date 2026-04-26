@@ -12,7 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
+import * as Notifications from 'expo-notifications'; // <-- Añadido
 import { apiClient } from '../api/client';
+import { updateAlertSettings } from '../api/auth'; // <-- Añadido
 
 // Iconos para el selector de tipo
 const TIPOS_ELECTRODOMESTICOS = [
@@ -31,12 +33,13 @@ export default function ProfileScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
-  // --- ESTADOS DE LA UI ORIGINAL ---
-  const [alertasActivas, setAlertasActivas] = useState(true);
+  // --- ESTADOS DE LA UI DE ALERTAS ---
+  const [alertasActivas, setAlertasActivas] = useState(false);
   const [umbralPrecio, setUmbralPrecio] = useState('0.15');
+  const [isSavingAlert, setIsSavingAlert] = useState(false); // <-- Añadido para el botón de guardar
+
+  // --- ESTADOS DE DISPOSITIVOS ---
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
-  
-  // Ya no pedimos duración en el estado
   const [nuevoDispositivo, setNuevoDispositivo] = useState({
     nombre: '',
     tipo: 'lavadora',
@@ -52,7 +55,14 @@ export default function ProfileScreen({ navigation }: any) {
     try {
       setLoading(true);
       const resUser = await apiClient.get('/auth/perfil');
-      setUser(resUser.data.usuario);
+      const userData = resUser.data.usuario;
+      setUser(userData);
+      
+      // <-- ACTUALIZADO: Cargamos la configuración real de alertas desde la BBDD
+      setAlertasActivas(userData.alertaPrecioActiva || false);
+      if (userData.alertaPrecioObjetivo) {
+        setUmbralPrecio(userData.alertaPrecioObjetivo.toString());
+      }
 
       const resDevices = await apiClient.get('/devices');
       setDevices(resDevices.data);
@@ -63,9 +73,47 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
-  // 2. Función para añadir electrodoméstico
+  // 2. Función para guardar la configuración de la alerta (¡NUEVA!)
+  const handleSaveAlert = async () => {
+    try {
+      setIsSavingAlert(true);
+      let pushToken = undefined;
+
+      // Si activa la alerta, comprobamos permisos y sacamos el Token
+      if (alertasActivas) {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+
+        if (finalStatus !== 'granted') {
+          Alert.alert('Permiso denegado', 'Necesitamos permisos para enviarte las alertas.');
+          setIsSavingAlert(false);
+          return;
+        }
+
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        pushToken = tokenData.data;
+      }
+
+      // Enviamos al servidor
+      const precioNum = parseFloat(umbralPrecio.replace(',', '.')) || 0;
+      await updateAlertSettings(alertasActivas, precioNum, pushToken);
+      
+      Alert.alert('¡Éxito!', 'Configuración de alertas guardada correctamente.');
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'No se pudo guardar la configuración.');
+    } finally {
+      setIsSavingAlert(false);
+    }
+  };
+
+  // 3. Función para añadir electrodoméstico
   const handleAddDevice = async () => {
-    // Validamos solo nombre y potencia
     if (!nuevoDispositivo.nombre || !nuevoDispositivo.potencia) {
       Alert.alert('Error', 'Por favor, rellena todos los campos.');
       return;
@@ -77,10 +125,9 @@ export default function ProfileScreen({ navigation }: any) {
         nombre: nuevoDispositivo.nombre,
         tipo: nuevoDispositivo.tipo,
         potencia: parseFloat(nuevoDispositivo.potencia),
-        duracion: 1, // <--- Valor por defecto para la base de datos
+        duracion: 1, 
       });
       
-      // Limpiamos formulario y recargamos
       setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '' });
       setMostrarFormulario(false);
       fetchProfileAndDevices();
@@ -93,7 +140,7 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
-  // 3. Función para borrar electrodoméstico
+  // 4. Función para borrar electrodoméstico
   const handleDeleteDevice = async (id: number) => {
     Alert.alert(
       'Eliminar',
@@ -116,7 +163,7 @@ export default function ProfileScreen({ navigation }: any) {
     );
   };
 
-  // 4. Función para cerrar sesión
+  // 5. Función para cerrar sesión
   const handleLogout = async () => {
     await SecureStore.deleteItemAsync('userToken');
     navigation.replace('Welcome');
@@ -193,8 +240,16 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
-          <TouchableOpacity style={styles.primaryButton}>
-            <Text style={styles.buttonText}>GUARDAR CONFIGURACIÓN</Text>
+          <TouchableOpacity 
+            style={styles.primaryButton} 
+            onPress={handleSaveAlert}
+            disabled={isSavingAlert}
+          >
+            {isSavingAlert ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>GUARDAR CONFIGURACIÓN</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -243,8 +298,6 @@ export default function ProfileScreen({ navigation }: any) {
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
               />
 
-              {/* ELIMINADO EL CAMPO DURACIÓN */}
-
               <TouchableOpacity style={styles.primaryButton} onPress={handleAddDevice} disabled={adding}>
                 {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
               </TouchableOpacity>
@@ -266,7 +319,6 @@ export default function ProfileScreen({ navigation }: any) {
                       <Text style={styles.deviceItemIcon}>{icon}</Text>
                       <View style={styles.deviceItemInfo}>
                         <Text style={styles.deviceItemName}>{device.nombre}</Text>
-                        {/* Ya no mostramos las horas aquí, solo la potencia */}
                         <Text style={styles.deviceItemDetails}>{device.potencia} kW</Text>
                       </View>
                       <TouchableOpacity onPress={() => handleDeleteDevice(device.id)} style={styles.deleteBtn}>
@@ -317,7 +369,6 @@ const styles = StyleSheet.create({
   iconButton: { borderWidth: 1, borderColor: '#bdc3c7', borderRadius: 8, padding: 12, width: '30%', alignItems: 'center', backgroundColor: '#f8f9fa' },
   iconButtonActive: { borderColor: '#3498db', backgroundColor: '#ebf5fb' },
   iconText: { fontSize: 24 },
-  
   deviceListContainer: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#ecf0f1', paddingTop: 16 },
   emptyText: { textAlign: 'center', color: '#7f8c8d', fontStyle: 'italic', marginTop: 10 },
   deviceItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#e9ecef' },
