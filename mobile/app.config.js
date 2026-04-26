@@ -1,0 +1,48 @@
+export default {
+  expo: {
+    name: "EcoWatt",
+    slug: "EcoWatt",
+    version: "1.0.0",
+    orientation: "portrait",
+    icon: "./assets/icon.png",
+    userInterfaceStyle: "light",
+    splash: {
+      image: "./assets/splash-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff"
+    },
+    ios: {
+      supportsTablet: true
+    },
+    android: {
+      package: "com.proyecto.ecowatt",
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || "./google-services.json",
+      adaptiveIcon: {
+        backgroundColor: "#E6F4FE",
+        foregroundImage: "./assets/android-icon-foreground.png",
+        backgroundImage: "./assets/android-icon-background.png",
+        monochromeImage: "./assets/android-icon-monochrome.png"
+      },
+      predictiveBackGestureEnabled: false
+    },
+    web: {
+      favicon: "./assets/favicon.png"
+    },
+    plugins: [
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          icon: "./assets/icon.png",
+          color: "#E6F4FE"
+        }
+      ]
+    ],
+    extra: {
+      eas: {
+        projectId: "33844626-f91a-423e-b5a3-d725f3081327"
+      }
+    },
+    owner: "nazgulone"
+  }
+};
