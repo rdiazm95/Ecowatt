@@ -1,7 +1,7 @@
 export default {
   expo: {
     name: "EcoWatt",
-    slug: "EcoWatt",
+    slug: "mobile",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
