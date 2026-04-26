@@ -72,7 +72,11 @@ export default function LoginScreen({ navigation }: any) {
             onChangeText={setPassword}
           />
 
-          <TouchableOpacity style={styles.forgotPassword}>
+          {/* <-- AÑADIDA LA NAVEGACIÓN A FORGOT PASSWORD --> */}
+          <TouchableOpacity 
+            style={styles.forgotPassword}
+            onPress={() => navigation.navigate('ForgotPassword')}
+          >
             <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
           </TouchableOpacity>
 
@@ -91,7 +95,8 @@ export default function LoginScreen({ navigation }: any) {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>¿No tienes cuenta? </Text>
-          <TouchableOpacity onPress={() => console.log('Ir a registro')}>
+          {/* <-- AÑADIDA LA NAVEGACIÓN A REGISTRO --> */}
+          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
             <Text style={styles.registerText}>Regístrate aquí</Text>
           </TouchableOpacity>
         </View>
