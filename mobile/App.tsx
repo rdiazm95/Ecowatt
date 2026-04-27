@@ -1,55 +1,65 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+// import * as Notifications from 'expo-notifications'; // DESHABILITADO: no compatible con emulador
 
-export default function AuthLoadingScreen({ navigation }: any) {
+import WelcomeScreen from './src/screens/WelcomeScreen';
+import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import TabNavigator from './src/navigation/TabNavigator';
+import AuthLoadingScreen from './src/screens/AuthLoadingScreen'; // ← NUEVO
+
+// DESHABILITADO: no compatible con emulador
+// Notifications.setNotificationHandler({
+//   handleNotification: async () => ({
+//     shouldShowAlert: true,
+//     shouldPlaySound: true,
+//     shouldSetBadge: false,
+//     shouldShowBanner: true,
+//     shouldShowList: true,
+//   }),
+// });
+
+const Stack = createNativeStackNavigator();
+
+// DESHABILITADO: no compatible con emulador
+// async function registerForPushNotifications() {
+//   const { status } = await Notifications.requestPermissionsAsync();
+//   if (status !== 'granted') {
+//     alert('¡Necesitamos permiso para enviarte alertas de precio!');
+//     return;
+//   }
+//   const token = await Notifications.getExpoPushTokenAsync({
+//     projectId: '33844626-f91a-423e-b5a3-d725f3081327',
+//   });
+//   console.log('Token Push:', token.data);
+//   return token.data;
+// }
+
+export default function App() {
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const token = await SecureStore.getItemAsync('userToken');
-        if (token) {
-          // Sesión activa → va directo a la app sin pasar por login
-          navigation.replace('MainApp');
-        } else {
-          // Sin sesión → pantalla de bienvenida
-          navigation.replace('Welcome');
-        }
-      } catch {
-        // Si falla SecureStore por cualquier razón, mandamos al Welcome
-        navigation.replace('Welcome');
-      }
-    };
-
-    checkSession();
+    // registerForPushNotifications(); // DESHABILITADO: no compatible con emulador
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.logo}>🌱⚡</Text>
-      <Text style={styles.title}>EcoWatt</Text>
-      <ActivityIndicator size="large" color="#27ae60" style={styles.spinner} />
-    </View>
+    <NavigationContainer>
+      <Stack.Navigator
+        initialRouteName="AuthLoading" // ← NUEVO: arranca en el check de sesión
+        screenOptions={{ headerShown: false }}
+      >
+        {/* Check de sesión al arrancar ← NUEVO */}
+        <Stack.Screen name="AuthLoading" component={AuthLoadingScreen} />
+
+        <Stack.Screen name="Welcome" component={WelcomeScreen} />
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Register" component={RegisterScreen} />
+
+        {/* Recuperar Contraseña */}
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+
+        <Stack.Screen name="MainApp" component={TabNavigator} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    gap: 12,
-  },
-  logo: {
-    fontSize: 52,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#2c3e50',
-    letterSpacing: 1,
-  },
-  spinner: {
-    marginTop: 24,
-  },
-});
