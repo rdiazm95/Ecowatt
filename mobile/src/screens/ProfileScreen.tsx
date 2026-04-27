@@ -11,11 +11,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as SecureStore from 'expo-secure-store';
 // import * as Notifications from 'expo-notifications'; // DESHABILITADO: no compatible con emulador
 // import Constants from 'expo-constants'; // DESHABILITADO: no compatible con emulador
 import { apiClient } from '../api/client';
-import { updateAlertSettings } from '../api/auth';
+import { updateAlertSettings, logout } from '../api/auth'; // ← AÑADIDO logout, ELIMINADO SecureStore
+
 
 // Iconos para el selector de tipo
 const TIPOS_ELECTRODOMESTICOS = [
@@ -27,6 +27,7 @@ const TIPOS_ELECTRODOMESTICOS = [
   { id: 'tv', icon: '📺' },
 ];
 
+
 export default function ProfileScreen({ navigation }: any) {
   // --- ESTADOS DEL BACKEND ---
   const [user, setUser] = useState<any>(null);
@@ -34,10 +35,12 @@ export default function ProfileScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
+
   // --- ESTADOS DE LA UI DE ALERTAS ---
   const [alertasActivas, setAlertasActivas] = useState(false);
   const [umbralPrecio, setUmbralPrecio] = useState('0.15');
   const [isSavingAlert, setIsSavingAlert] = useState(false);
+
 
   // --- ESTADOS DE DISPOSITIVOS ---
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -47,10 +50,12 @@ export default function ProfileScreen({ navigation }: any) {
     potencia: '',
   });
 
+
   // 1. Cargar Datos al inicio
   useEffect(() => {
     fetchProfileAndDevices();
   }, []);
+
 
   const fetchProfileAndDevices = async () => {
     try {
@@ -59,10 +64,12 @@ export default function ProfileScreen({ navigation }: any) {
       const userData = resUser.data.usuario;
       setUser(userData);
 
+
       setAlertasActivas(userData.alertaPrecioActiva || false);
       if (userData.alertaPrecioObjetivo) {
         setUmbralPrecio(userData.alertaPrecioObjetivo.toString());
       }
+
 
       const resDevices = await apiClient.get('/devices');
       setDevices(resDevices.data);
@@ -73,39 +80,23 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
+
   // 2. Función para guardar la configuración de la alerta
   const handleSaveAlert = async () => {
     try {
       setIsSavingAlert(true);
 
+
       // DESHABILITADO: bloque de notificaciones no compatible con emulador
-      // if (alertasActivas) {
-      //   const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      //   let finalStatus = existingStatus;
-      //   if (existingStatus !== 'granted') {
-      //     const { status } = await Notifications.requestPermissionsAsync();
-      //     finalStatus = status;
-      //   }
-      //   if (finalStatus !== 'granted') {
-      //     Alert.alert('Permiso denegado', 'Necesitamos permisos para enviarte las alertas.');
-      //     setIsSavingAlert(false);
-      //     return;
-      //   }
-      //   const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-      //   if (!projectId) {
-      //     Alert.alert('Error', 'No se encontró el Project ID. Revisa tu app.json y reinicia el servidor.');
-      //     setIsSavingAlert(false);
-      //     return;
-      //   }
-      //   const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-      //   pushToken = tokenData.data;
-      // }
+      // if (alertasActivas) { ... }
+
 
       const pushToken = undefined; // DESHABILITADO: no compatible con emulador
 
-      // Enviamos al servidor sin token de notificación
+
       const precioNum = parseFloat(umbralPrecio.replace(',', '.')) || 0;
       await updateAlertSettings(alertasActivas, precioNum, pushToken);
+
 
       Alert.alert('¡Éxito!', 'Configuración de alertas guardada correctamente.');
     } catch (error) {
@@ -116,12 +107,14 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
+
   // 3. Función para añadir electrodoméstico
   const handleAddDevice = async () => {
     if (!nuevoDispositivo.nombre || !nuevoDispositivo.potencia) {
       Alert.alert('Error', 'Por favor, rellena todos los campos.');
       return;
     }
+
 
     setAdding(true);
     try {
@@ -132,9 +125,11 @@ export default function ProfileScreen({ navigation }: any) {
         duracion: 1,
       });
 
+
       setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '' });
       setMostrarFormulario(false);
       fetchProfileAndDevices();
+
 
       Alert.alert('Éxito', 'Electrodoméstico creado correctamente.');
     } catch (error) {
@@ -143,6 +138,7 @@ export default function ProfileScreen({ navigation }: any) {
       setAdding(false);
     }
   };
+
 
   // 4. Función para borrar electrodoméstico
   const handleDeleteDevice = async (id: number) => {
@@ -167,11 +163,13 @@ export default function ProfileScreen({ navigation }: any) {
     );
   };
 
-  // 5. Función para cerrar sesión
+
+  // 5. Función para cerrar sesión ← CAMBIADO: usa logout() de auth.ts
   const handleLogout = async () => {
-    await SecureStore.deleteItemAsync('userToken');
-    navigation.replace('Welcome');
+    await logout();                  // Borra el token del SecureStore
+    navigation.replace('Welcome');   // replace evita volver atrás con el botón back
   };
+
 
   if (loading) {
     return (
@@ -182,11 +180,14 @@ export default function ProfileScreen({ navigation }: any) {
     );
   }
 
+
   const iniciales = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
+
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+
 
         {/* Cabecera del Perfil Real */}
         <View style={styles.header}>
@@ -196,10 +197,12 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.userName}>{user?.email.split('@')[0]}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
 
+
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Text style={styles.logoutText}>Cerrar Sesión</Text>
           </TouchableOpacity>
         </View>
+
 
         {/* 1. SECCIÓN: Configuración de Alertas */}
         <View style={styles.card}>
@@ -207,6 +210,7 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.description}>
             Recibe una notificación cuando el precio de la luz baje del umbral establecido.
           </Text>
+
 
           <View style={styles.row}>
             <Text style={styles.label}>Activar Notificaciones Automáticas</Text>
@@ -217,6 +221,7 @@ export default function ProfileScreen({ navigation }: any) {
               thumbColor={'#fff'}
             />
           </View>
+
 
           {alertasActivas && (
             <View style={styles.inputContainer}>
@@ -244,6 +249,7 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
+
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={handleSaveAlert}
@@ -257,6 +263,7 @@ export default function ProfileScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
+
         {/* 2. SECCIÓN: Gestión de Electrodomésticos */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
@@ -265,6 +272,7 @@ export default function ProfileScreen({ navigation }: any) {
               <Text style={styles.linkText}>{mostrarFormulario ? 'Cancelar' : '+ Añadir Nuevo'}</Text>
             </TouchableOpacity>
           </View>
+
 
           {/* Formulario Desplegable */}
           {mostrarFormulario && (
@@ -276,6 +284,7 @@ export default function ProfileScreen({ navigation }: any) {
                 value={nuevoDispositivo.nombre}
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, nombre: t})}
               />
+
 
               <Text style={styles.label}>Tipo de Electrodoméstico</Text>
               <View style={styles.iconGrid}>
@@ -293,6 +302,7 @@ export default function ProfileScreen({ navigation }: any) {
                 ))}
               </View>
 
+
               <Text style={styles.label}>Potencia Máxima (kW)</Text>
               <TextInput
                 style={styles.textInput}
@@ -302,11 +312,13 @@ export default function ProfileScreen({ navigation }: any) {
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
               />
 
+
               <TouchableOpacity style={styles.primaryButton} onPress={handleAddDevice} disabled={adding}>
                 {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
               </TouchableOpacity>
             </View>
           )}
+
 
           {/* Lista de Dispositivos Reales */}
           {!mostrarFormulario && (
@@ -317,6 +329,7 @@ export default function ProfileScreen({ navigation }: any) {
                 devices.map((device) => {
                   const iconObj = TIPOS_ELECTRODOMESTICOS.find(t => t.id === device.tipo);
                   const icon = iconObj ? iconObj.icon : '⚡';
+
 
                   return (
                     <View key={device.id} style={styles.deviceItem}>
@@ -335,13 +348,16 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
+
         </View>
+
 
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },

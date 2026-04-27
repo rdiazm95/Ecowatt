@@ -1,6 +1,9 @@
 import { apiClient } from './client';
 import * as SecureStore from 'expo-secure-store';
 
+// ==========================================
+// LOGIN
+// ==========================================
 export async function loginAndSaveToken(email: string, pass: string) {
   try {
     console.log('Intentando hacer login...');
@@ -23,6 +26,21 @@ export async function loginAndSaveToken(email: string, pass: string) {
 }
 
 // ==========================================
+// LOGOUT
+// ==========================================
+export async function logout() {
+  await SecureStore.deleteItemAsync('userToken');
+  console.log('Token eliminado. Sesión cerrada.');
+}
+
+// ==========================================
+// COMPROBAR SESIÓN ACTIVA (para el splash)
+// ==========================================
+export async function getStoredToken(): Promise<string | null> {
+  return await SecureStore.getItemAsync('userToken');
+}
+
+// ==========================================
 // CONFIGURACIÓN DE ALERTAS
 // ==========================================
 export async function updateAlertSettings(alertaActiva: boolean, precioObjetivo: number, pushToken?: string) {
@@ -35,12 +53,12 @@ export async function updateAlertSettings(alertaActiva: boolean, precioObjetivo:
     return response.data;
   } catch (error) {
     console.error('Error al guardar la configuración de alertas en la API:', error);
-    throw error; // Lanzamos el error para que la pantalla pueda mostrar un mensaje si falla
+    throw error;
   }
 }
 
 // ==========================================
-// NUEVO: RECUPERACIÓN DE CONTRASEÑA
+// RECUPERACIÓN DE CONTRASEÑA
 // ==========================================
 
 // Paso 1: Solicitar código al correo
