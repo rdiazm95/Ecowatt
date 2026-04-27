@@ -10,12 +10,10 @@ export class UsersService {
     private usersRepository: Repository<User>,
   ) {}
 
-  // Busca un usuario por su email (lo usaremos para el Login)
   async findOneByEmail(email: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { email } });
   }
 
-  // Guarda un nuevo usuario en la base de datos
   async create(email: string, passwordHash: string): Promise<User> {
     const newUser = this.usersRepository.create({
       email,
@@ -43,8 +41,13 @@ export class UsersService {
     user.alertaPrecioObjetivo = alertaPrecioObjetivo;
 
     if (expoPushToken) {
+      // Nuevo token recibido → actualizarlo
       user.expoPushToken = expoPushToken;
+    } else if (!alertaPrecioActiva) {
+      // Desactivando alertas sin token → limpiar token viejo
+      user.expoPushToken = null;
     }
+    // Si alertaPrecioActiva=true pero sin token nuevo → mantener token existente
 
     return this.usersRepository.save(user);
   }
@@ -56,37 +59,35 @@ export class UsersService {
     return this.usersRepository.find({
       where: {
         alertaPrecioActiva: true,
-        expoPushToken: Not(IsNull()), // Solo usuarios que tengan un token válido
+        expoPushToken: Not(IsNull()),
       },
     });
   }
 
   // ==========================================
-  // NUEVO: FUNCIONES PARA RECUPERAR CONTRASEÑA
+  // FUNCIONES PARA RECUPERAR CONTRASEÑA
   // ==========================================
-  
-  // Guarda el código de 6 dígitos generado y su caducidad
+
   async saveResetToken(userId: number, code: string, expires: Date): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
     }
-    
+
     user.resetPasswordCode = code;
     user.resetPasswordExpires = expires;
     return this.usersRepository.save(user);
   }
 
-  // Actualiza la contraseña y borra el código para que no se use dos veces
   async updatePassword(userId: number, newPasswordHash: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
     }
-    
+
     user.passwordHash = newPasswordHash;
-    user.resetPasswordCode = null; // Borramos el código
-    user.resetPasswordExpires = null; // Borramos la caducidad
+    user.resetPasswordCode = null;
+    user.resetPasswordExpires = null;
     return this.usersRepository.save(user);
   }
 }

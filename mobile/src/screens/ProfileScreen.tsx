@@ -9,16 +9,13 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Notifications from 'expo-notifications'; // ← REACTIVADO
-import Constants from 'expo-constants';               // ← REACTIVADO
+import * as Notifications from 'expo-notifications';
 import { apiClient } from '../api/client';
 import { updateAlertSettings, logout } from '../api/auth';
 
 
-// Iconos para el selector de tipo
 const TIPOS_ELECTRODOMESTICOS = [
   { id: 'lavadora', icon: '👕' },
   { id: 'lavavajillas', icon: '🍽️' },
@@ -30,20 +27,15 @@ const TIPOS_ELECTRODOMESTICOS = [
 
 
 export default function ProfileScreen({ navigation }: any) {
-  // --- ESTADOS DEL BACKEND ---
   const [user, setUser] = useState<any>(null);
   const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
-
-  // --- ESTADOS DE LA UI DE ALERTAS ---
   const [alertasActivas, setAlertasActivas] = useState(false);
   const [umbralPrecio, setUmbralPrecio] = useState('0.15');
   const [isSavingAlert, setIsSavingAlert] = useState(false);
 
-
-  // --- ESTADOS DE DISPOSITIVOS ---
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [nuevoDispositivo, setNuevoDispositivo] = useState({
     nombre: '',
@@ -51,12 +43,9 @@ export default function ProfileScreen({ navigation }: any) {
     potencia: '',
   });
 
-
-  // 1. Cargar Datos al inicio
   useEffect(() => {
     fetchProfileAndDevices();
   }, []);
-
 
   const fetchProfileAndDevices = async () => {
     try {
@@ -79,47 +68,38 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
-
-  // 2. Función para guardar la configuración de la alerta
   const handleSaveAlert = async () => {
     try {
       setIsSavingAlert(true);
       let pushToken: string | undefined = undefined;
 
       if (alertasActivas) {
-        // Solo en dispositivo físico (los emuladores Android no soportan push tokens)
-        if (Platform.OS === 'android' && !Constants.isDevice) {
+        // Solicitar permisos de notificación
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+
+        if (finalStatus !== 'granted') {
           Alert.alert(
-            'Emulador detectado',
-            'Las notificaciones push solo funcionan en dispositivos físicos. La alerta de precio se guardará igualmente.',
+            'Permiso denegado',
+            'Necesitamos permisos para enviarte las alertas de precio. Actívalos en los ajustes del móvil.',
           );
-        } else {
-          // Solicitar permisos de notificación
-          const { status: existingStatus } = await Notifications.getPermissionsAsync();
-          let finalStatus = existingStatus;
+          setIsSavingAlert(false);
+          return;
+        }
 
-          if (existingStatus !== 'granted') {
-            const { status } = await Notifications.requestPermissionsAsync();
-            finalStatus = status;
-          }
-
-          if (finalStatus !== 'granted') {
-            Alert.alert(
-              'Permiso denegado',
-              'Necesitamos permisos para enviarte las alertas de precio. Actívalos en los ajustes del móvil.',
-            );
-            setIsSavingAlert(false);
-            return;
-          }
-
-          // Obtener el Expo Push Token real del dispositivo
-          const projectId =
-            Constants.expoConfig?.extra?.eas?.projectId ??
-            '33844626-f91a-423e-b5a3-d725f3081327';
-
-          const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+        // Obtener FCM token nativo para Firebase Admin SDK
+        try {
+          const tokenData = await Notifications.getDevicePushTokenAsync();
           pushToken = tokenData.data;
-          console.log('✅ Push token obtenido:', pushToken);
+          console.log('✅ FCM token obtenido:', pushToken);
+        } catch (tokenError) {
+          console.warn('⚠️ No se pudo obtener FCM token:', tokenError);
+          // Continúa sin token — se guarda la preferencia igualmente
         }
       }
 
@@ -135,8 +115,6 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
-
-  // 3. Función para añadir electrodoméstico
   const handleAddDevice = async () => {
     if (!nuevoDispositivo.nombre || !nuevoDispositivo.potencia) {
       Alert.alert('Error', 'Por favor, rellena todos los campos.');
@@ -164,8 +142,6 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
-
-  // 4. Función para borrar electrodoméstico
   const handleDeleteDevice = async (id: number) => {
     Alert.alert(
       'Eliminar',
@@ -188,13 +164,10 @@ export default function ProfileScreen({ navigation }: any) {
     );
   };
 
-
-  // 5. Función para cerrar sesión
   const handleLogout = async () => {
     await logout();
     navigation.replace('Welcome');
   };
-
 
   if (loading) {
     return (
@@ -205,16 +178,12 @@ export default function ProfileScreen({ navigation }: any) {
     );
   }
 
-
   const iniciales = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
-
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
 
-
-        {/* Cabecera del Perfil Real */}
         <View style={styles.header}>
           <View style={styles.avatarMock}>
             <Text style={styles.avatarText}>{iniciales}</Text>
@@ -227,8 +196,6 @@ export default function ProfileScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-
-        {/* 1. SECCIÓN: Configuración de Alertas */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Alertas de Precio de la Energía</Text>
           <Text style={styles.description}>
@@ -284,8 +251,6 @@ export default function ProfileScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-
-        {/* 2. SECCIÓN: Gestión de Electrodomésticos */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
             <Text style={styles.sectionTitle}>Mis Electrodomésticos</Text>
@@ -294,7 +259,6 @@ export default function ProfileScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
-          {/* Formulario Desplegable */}
           {mostrarFormulario && (
             <View style={styles.formContainer}>
               <Text style={styles.label}>Nombre del Electrodoméstico</Text>
@@ -336,7 +300,6 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
-          {/* Lista de Dispositivos Reales */}
           {!mostrarFormulario && (
             <View style={styles.deviceListContainer}>
               {devices.length === 0 ? (
@@ -362,9 +325,7 @@ export default function ProfileScreen({ navigation }: any) {
               )}
             </View>
           )}
-
         </View>
-
 
         <View style={{ height: 40 }} />
       </ScrollView>
