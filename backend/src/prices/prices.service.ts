@@ -4,8 +4,8 @@ import { Repository, Between } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Price } from './entities/price.entity';
 import { EsiosService } from '../esios/esios.service';
-import { UsersService } from '../users/users.service'; // <-- Añadido
-import axios from 'axios'; // <-- Añadido para mandar la notificación Push
+import { UsersService } from '../users/users.service';
+import axios from 'axios';
 
 @Injectable()
 export class PricesService {
@@ -15,10 +15,58 @@ export class PricesService {
     @InjectRepository(Price)
     private priceRepository: Repository<Price>,
     private esiosService: EsiosService,
-    private usersService: UsersService, // <-- Inyectado aquí
+    private usersService: UsersService,
   ) {}
 
-  // Ejecutar todos los días a las 21:00
+  // ─────────────────────────────────────────
+  // HELPER: convierte la hora local española
+  // del string de ESIOS a un Date UTC "neutro"
+  // Para que "00:00+02:00" se guarde como
+  // 00:00 UTC en PostgreSQL, no como 22:00 UTC
+  // ─────────────────────────────────────────
+  private parseEsiosDatetime(raw: string): Date {
+    // raw = "2026-04-27T00:00:00+02:00"
+    // Tomamos solo la parte local sin offset: "2026-04-27T00:00:00"
+    // y la tratamos como UTC con la Z para que no haya conversión
+    const localPart = raw.substring(0, 19); // "2026-04-27T00:00:00"
+    return new Date(localPart + 'Z');        // guardado como 00:00 UTC
+  }
+
+  // ─────────────────────────────────────────
+  // HELPER: hora española actual como UTC neutro
+  // El servidor corre en UTC, así que sumamos
+  // el offset de España para obtener la hora
+  // local española y buscarla en BD
+  // ─────────────────────────────────────────
+  private getNowSpainAsUtcNeutral(): Date {
+    const now = new Date();
+    const offsetHours = this.getSpainOffsetHours(now);
+    const spainNow = new Date(now.getTime() + offsetHours * 3600 * 1000);
+    spainNow.setMinutes(0, 0, 0);
+    return spainNow;
+  }
+
+  // ─────────────────────────────────────────
+  // HELPER: offset en horas de España (+1 o +2)
+  // ─────────────────────────────────────────
+  private getSpainOffsetHours(date: Date): number {
+    const year = date.getUTCFullYear();
+    const lastSundayMarch   = this.lastSundayOfUTC(year, 2);
+    const lastSundayOctober = this.lastSundayOfUTC(year, 9);
+    return date >= lastSundayMarch && date < lastSundayOctober ? 2 : 1;
+  }
+
+  private lastSundayOfUTC(year: number, month: number): Date {
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)); // último día del mes
+    const dow = lastDay.getUTCDay();
+    lastDay.setUTCDate(lastDay.getUTCDate() - dow);
+    return lastDay;
+  }
+
+  // ─────────────────────────────────────────
+  // CRON: precios de mañana cada día a las 21:00 UTC
+  // (= 23:00 hora española, ESIOS ya los publicó)
+  // ─────────────────────────────────────────
   @Cron('0 0 21 * * *')
   async fetchTomorrowPrices(): Promise<void> {
     this.logger.log('CRON: Iniciando descarga de precios para mañana...');
@@ -27,17 +75,19 @@ export class PricesService {
     await this.fetchAndSavePrices(tomorrow);
   }
 
-  // Ejecutar al iniciar la aplicación para obtener precios
+  // ─────────────────────────────────────────
+  // ARRANQUE
+  // ─────────────────────────────────────────
   async onModuleInit(): Promise<void> {
     const today = new Date();
     const existingPrices = await this.getPricesByDate(today);
-    
+
     if (existingPrices.length === 0) {
       this.logger.log('ARRANQUE: No hay precios de hoy, descargando...');
       await this.fetchAndSavePrices(today);
     }
 
-    // Novedad: Si arranco el servidor tarde (después de las 20:30) y no tengo los de mañana, los bajo.
+    // Si arranco tarde y no tengo los de mañana, los intento bajar
     const now = new Date();
     if (now.getHours() >= 20 && now.getMinutes() >= 30 || now.getHours() >= 21) {
       const tomorrow = new Date();
@@ -54,6 +104,12 @@ export class PricesService {
     }
   }
 
+  // ─────────────────────────────────────────
+  // FETCH & SAVE
+  // FIX: parseEsiosDatetime() en vez de new Date()
+  // para evitar la conversión UTC que descuadra
+  // las horas al guardar en PostgreSQL
+  // ─────────────────────────────────────────
   async fetchAndSavePrices(date: Date): Promise<Price[]> {
     try {
       const data = await this.esiosService.getPVPCPrices(date);
@@ -63,7 +119,7 @@ export class PricesService {
 
       for (const item of values) {
         const price = this.priceRepository.create({
-          datetime: new Date(item.datetime),
+          datetime: this.parseEsiosDatetime(item.datetime as string), // ← FIX
           value: item.value,
           valueKwh: item.value / 1000,
           geoZone: 'peninsula',
@@ -91,7 +147,9 @@ export class PricesService {
     }
   }
 
-  // --- MÉTODO MODIFICADO CON EL PATRÓN SELF-HEALING ---
+  // ─────────────────────────────────────────
+  // SELF-HEALING: busca en BD o descarga de ESIOS
+  // ─────────────────────────────────────────
   async getPricesByDate(date: Date): Promise<Price[]> {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -99,7 +157,6 @@ export class PricesService {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // 1. Buscamos en la base de datos local primero
     let prices = await this.priceRepository.find({
       where: {
         datetime: Between(startOfDay, endOfDay),
@@ -107,11 +164,9 @@ export class PricesService {
       order: { datetime: 'ASC' },
     });
 
-    // 2. Si no hay datos para esta fecha en nuestra BD, los pedimos a ESIOS
     if (prices.length === 0) {
       this.logger.log(`No hay datos locales para ${date.toDateString()}. Descargando de ESIOS...`);
       try {
-        // fetchAndSavePrices ya se encarga de guardar en BD y retornar el array de precios
         prices = await this.fetchAndSavePrices(date);
       } catch (error) {
         this.logger.warn(`No se pudieron descargar los precios históricos para ${date.toDateString()}`);
@@ -121,10 +176,14 @@ export class PricesService {
     return prices;
   }
 
+  // ─────────────────────────────────────────
+  // PRECIO ACTUAL
+  // FIX: usa getNowSpainAsUtcNeutral() para que
+  // la hora de búsqueda coincida con cómo se
+  // guardaron los datos (hora española como UTC)
+  // ─────────────────────────────────────────
   async getCurrentPrice(): Promise<Price | null> {
-    const now = new Date();
-    const currentHour = new Date(now);
-    currentHour.setMinutes(0, 0, 0);
+    const currentHour = this.getNowSpainAsUtcNeutral(); // ← FIX
 
     return this.priceRepository.findOne({
       where: { datetime: currentHour },
@@ -135,13 +194,11 @@ export class PricesService {
     return this.getPricesByDate(new Date());
   }
 
-  // AÑADIDO: PATRÓN "SELF-HEALING" (Auto-rescate)
   async getTomorrowPrices(): Promise<Price[]> {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     let prices = await this.getPricesByDate(tomorrow);
 
-    // Si alguien pide los de mañana, está vacío, y ya son pasadas las 20:30...
     const now = new Date();
     if (prices.length === 0 && (now.getHours() >= 21 || (now.getHours() === 20 && now.getMinutes() >= 30))) {
       this.logger.log('RESCATE: Petición de precios de mañana recibida. Intentando descargar al vuelo...');
@@ -155,21 +212,18 @@ export class PricesService {
     return prices;
   }
 
-  // ==========================================
-  // EL CENTINELA: CRON JOB DE ALERTAS
-  // ==========================================
-  
-  // Se ejecuta exactamente cada hora en punto (ej: 14:00:00, 15:00:00)
+  // ─────────────────────────────────────────
+  // CENTINELA: alertas cada hora en punto
+  // FIX: usa getNowSpainAsUtcNeutral() para que
+  // la hora de búsqueda coincida con los datos
+  // ─────────────────────────────────────────
   @Cron('0 * * * *')
   async checkAndSendAlerts() {
     this.logger.log('🕵️‍♂️ Centinela despertando: Comprobando alertas de precio...');
 
     try {
-      // 1. Conseguir la hora actual exacta
-      const ahora = new Date();
-      ahora.setMinutes(0, 0, 0);
+      const ahora = this.getNowSpainAsUtcNeutral(); // ← FIX
 
-      // Buscamos el precio de esta hora usando tu campo 'datetime'
       const precioActual = await this.priceRepository.findOne({
         where: { datetime: ahora },
       });
@@ -179,25 +233,20 @@ export class PricesService {
         return;
       }
 
-      // Usamos el valueKwh que ya calculaste previamente al guardar
       const precioKwh = precioActual.valueKwh;
       this.logger.log(`Precio actual de la red: ${precioKwh.toFixed(5)} €/kWh`);
 
-      // 2. Traer a los usuarios apuntados a la alerta
       const usuarios = await this.usersService.getUsersWithActiveAlerts();
-      
+
       if (usuarios.length === 0) {
         this.logger.log('No hay usuarios con alertas activas para revisar.');
         return;
       }
 
-      // 3. Evaluar y Disparar
       let alertasEnviadas = 0;
 
       for (const user of usuarios) {
-        // Comparamos el precio (Asegurando que alertaPrecioObjetivo exista)
         if (user.alertaPrecioObjetivo && precioKwh <= user.alertaPrecioObjetivo) {
-          
           const pushMessage = {
             to: user.expoPushToken,
             sound: 'default',
@@ -207,14 +256,13 @@ export class PricesService {
           };
 
           await axios.post('https://exp.host/--/api/v2/push/send', pushMessage);
-          
+
           alertasEnviadas++;
           this.logger.log(`✅ Alerta enviada a usuario ${user.email} (Objetivo: ${user.alertaPrecioObjetivo})`);
         }
       }
 
       this.logger.log(`Centinela vuelve a dormir. Se enviaron ${alertasEnviadas} notificaciones.`);
-
     } catch (error) {
       this.logger.error('Error durante la ejecución del Centinela de alertas', error);
     }
