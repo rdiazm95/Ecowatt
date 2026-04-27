@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
+import { useNavigation } from '@react-navigation/native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { fetchTodayDashboard, TodayDashboard } from '../api/dashboard';
 
 const screenWidth = Dimensions.get('window').width;
@@ -21,6 +23,7 @@ function getPriceLevelColor(priceKwh: number, avg: number): string {
 }
 
 const App = () => {
+  const navigation = useNavigation<any>();
   const [data, setData] = useState<TodayDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,10 +67,8 @@ const App = () => {
   const currentHour = now.getHours();
 
   const todayData = data.today;
-  // ✅ Tipado limpio, sin any
   const tomorrowData = data.tomorrow;
 
-  // ✅ Usamos hasPrices del backend como fuente de verdad
   const tomorrowAvailable = tomorrowData.hasPrices && tomorrowData.prices.length > 0;
   const tomorrowUnlockedByTime = currentHour >= 21;
 
@@ -111,10 +112,33 @@ const App = () => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>
-          EcoWatt - {showingTomorrow ? 'Mañana' : 'Hoy'}
-        </Text>
 
+        {/* ── Header profesional: fecha + badge ── */}
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.headerDate}>
+              {now.toLocaleDateString('es-ES', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+            </Text>
+            <Text style={styles.headerSub}>Precio de la electricidad</Text>
+          </View>
+          <View style={[
+            styles.headerBadge,
+            showingTomorrow ? styles.headerBadgeTomorrow : styles.headerBadgeToday,
+          ]}>
+            <Text style={[
+              styles.headerBadgeText,
+              showingTomorrow ? styles.headerBadgeTextTomorrow : styles.headerBadgeTextToday,
+            ]}>
+              {showingTomorrow ? 'Mañana' : 'Hoy'}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Selector Hoy / Mañana ── */}
         <View style={styles.segmentWrapper}>
           <View style={styles.segment}>
             <TouchableOpacity
@@ -201,44 +225,56 @@ const App = () => {
         </View>
 
         <View style={styles.card}>
+          {/* ── Cabecera: título + selector vista + botón histórico ── */}
           <View style={styles.headerRow}>
             <Text style={styles.sectionTitle}>
               {showingTomorrow ? 'Precios de mañana' : 'Precios de hoy'}
             </Text>
 
-            <View style={styles.smallSegment}>
-              <TouchableOpacity
-                style={[
-                  styles.smallSegmentButton,
-                  viewMode === 'chart' && styles.smallSegmentButtonActive,
-                ]}
-                onPress={() => setViewMode('chart')}
-              >
-                <Text
+            <View style={styles.headerControls}>
+              <View style={styles.smallSegment}>
+                <TouchableOpacity
                   style={[
-                    styles.smallSegmentText,
-                    viewMode === 'chart' && styles.smallSegmentTextActive,
+                    styles.smallSegmentButton,
+                    viewMode === 'chart' && styles.smallSegmentButtonActive,
                   ]}
+                  onPress={() => setViewMode('chart')}
                 >
-                  Gráfica
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.smallSegmentText,
+                      viewMode === 'chart' && styles.smallSegmentTextActive,
+                    ]}
+                  >
+                    Gráfica
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.smallSegmentButton,
-                  viewMode === 'hours' && styles.smallSegmentButtonActive,
-                ]}
-                onPress={() => setViewMode('hours')}
-              >
-                <Text
+                <TouchableOpacity
                   style={[
-                    styles.smallSegmentText,
-                    viewMode === 'hours' && styles.smallSegmentTextActive,
+                    styles.smallSegmentButton,
+                    viewMode === 'hours' && styles.smallSegmentButtonActive,
                   ]}
+                  onPress={() => setViewMode('hours')}
                 >
-                  Precios hora
-                </Text>
+                  <Text
+                    style={[
+                      styles.smallSegmentText,
+                      viewMode === 'hours' && styles.smallSegmentTextActive,
+                    ]}
+                  >
+                    Precios hora
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* ── Botón Histórico ── */}
+              <TouchableOpacity
+                style={styles.historyBtn}
+                onPress={() => navigation.navigate('History')}
+              >
+                <Ionicons name="bar-chart-outline" size={14} color="#3498db" />
+                <Text style={styles.historyBtnText}>Histórico</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -340,13 +376,48 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
   scrollContainer: { padding: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
+
+  // ── Header profesional ──
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 20,
-    color: '#2c3e50',
   },
+  headerDate: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#2c3e50',
+    textTransform: 'capitalize', // "lunes" → "Lunes"
+  },
+  headerSub: {
+    fontSize: 13,
+    color: '#95a5a6',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  headerBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  headerBadgeToday: {
+    backgroundColor: '#eaf4fb',
+  },
+  headerBadgeTomorrow: {
+    backgroundColor: '#fef9e7',
+  },
+  headerBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  headerBadgeTextToday: {
+    color: '#3498db',
+  },
+  headerBadgeTextTomorrow: {
+    color: '#d4a017',
+  },
+
   segmentWrapper: { marginBottom: 16 },
   segment: {
     flexDirection: 'row',
@@ -389,7 +460,29 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#34495e' },
-  headerRow: { gap: 12, marginBottom: 8 },
+  headerRow: { gap: 8, marginBottom: 8 },
+  headerControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  historyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#3498db',
+    backgroundColor: '#eaf4fb',
+  },
+  historyBtnText: {
+    color: '#3498db',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   currentPrice: {
     fontSize: 32,
     fontWeight: '800',

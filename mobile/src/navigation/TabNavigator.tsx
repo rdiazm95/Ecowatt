@@ -1,7 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import DashboardScreen from '../screens/DashboardScreen';
@@ -14,9 +13,9 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 // ─── Tab con las pestañas normales ───────────────────────────────────────────
-function TabScreens() {
-  const route = useRoute<any>();
-  const isGuest = route.params?.isGuest || false;
+// Recibe isGuest como prop desde el Stack exterior (no con useRoute)
+function TabScreens({ route }: any) {
+  const isGuest = route?.params?.isGuest || false;
 
   return (
     <Tab.Navigator
@@ -37,7 +36,7 @@ function TabScreens() {
           fontSize: 12,
           fontWeight: '600',
         },
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused, color }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'ellipse';
 
           if (route.name === 'Dashboard') {
@@ -54,12 +53,14 @@ function TabScreens() {
         },
       })}
     >
+      {/* Dashboard siempre visible, también para invitados */}
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
         options={{ tabBarLabel: 'Hoy' }}
       />
 
+      {/* El resto solo para usuarios registrados */}
       {!isGuest && (
         <>
           <Tab.Screen
@@ -84,10 +85,17 @@ function TabScreens() {
 }
 
 // ─── Stack que envuelve el Tab + pantallas de detalle sin tab bar ─────────────
-export default function TabNavigator() {
+export default function TabNavigator({ route }: any) {
+  // Leemos isGuest aquí y lo propagamos a TabScreens via initialParams
+  const isGuest = route?.params?.isGuest || false;
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Tabs" component={TabScreens} />
+      <Stack.Screen
+        name="Tabs"
+        component={TabScreens}
+        initialParams={{ isGuest }}
+      />
       <Stack.Screen
         name="History"
         component={HistoryScreen}
