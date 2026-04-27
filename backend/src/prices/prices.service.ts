@@ -5,7 +5,7 @@ import { Cron } from '@nestjs/schedule';
 import { Price } from './entities/price.entity';
 import { EsiosService } from '../esios/esios.service';
 import { UsersService } from '../users/users.service';
-import axios from 'axios';
+import { NotificationsService } from '../notifications/notifications.service'; // <-- NUEVO IMPORT
 
 @Injectable()
 export class PricesService {
@@ -16,6 +16,7 @@ export class PricesService {
     private priceRepository: Repository<Price>,
     private esiosService: EsiosService,
     private usersService: UsersService,
+    private notificationsService: NotificationsService, // <-- LO INYECTAMOS AQUÍ
   ) {}
 
   // ─────────────────────────────────────────
@@ -277,18 +278,19 @@ export class PricesService {
 
       for (const user of usuarios) {
         if (user.alertaPrecioObjetivo && precioKwh <= user.alertaPrecioObjetivo) {
-          const pushMessage = {
-            to: user.expoPushToken,
-            sound: 'default',
-            title: '¡Luz Barata Detectada! ⚡️',
-            body: `El precio acaba de bajar a ${precioKwh.toFixed(3)} €/kWh. ¡Es el momento perfecto para encender tus electrodomésticos!`,
-            data: { precioKwh: precioKwh },
-          };
+          
+          if (user.expoPushToken) {
+            // AHORA USAMOS TU SERVICIO PROFESIONAL DE FIREBASE
+            await this.notificationsService.sendPushNotification(
+              user.expoPushToken,
+              '¡Luz Barata Detectada! ⚡️',
+              `El precio acaba de bajar a ${precioKwh.toFixed(3)} €/kWh. ¡Es el momento perfecto para encender tus electrodomésticos!`,
+              { precioKwh: precioKwh.toString() }
+            );
+            alertasEnviadas++;
+            this.logger.log(`✅ Alerta enviada a usuario ${user.email} (Objetivo: ${user.alertaPrecioObjetivo})`);
+          }
 
-          await axios.post('https://exp.host/--/api/v2/push/send', pushMessage);
-
-          alertasEnviadas++;
-          this.logger.log(`✅ Alerta enviada a usuario ${user.email} (Objetivo: ${user.alertaPrecioObjetivo})`);
         }
       }
 
