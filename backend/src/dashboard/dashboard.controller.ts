@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { DashboardService, TodayDashboard } from './dashboard.service';
+import { DashboardService, TodayDashboard, HistoryDayPoint } from './dashboard.service';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -8,5 +8,11 @@ export class DashboardController {
   @Get('today')
   async getTodayDashboard(): Promise<TodayDashboard> {
     return this.dashboardService.getTodayDashboard();
+  }
+
+  // GET /dashboard/history
+  @Get('history')
+  async getHistoryDashboard(): Promise<HistoryDayPoint[]> {
+    return this.dashboardService.getHistoryDashboard();
   }
 }

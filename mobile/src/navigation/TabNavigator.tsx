@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -7,10 +8,13 @@ import DashboardScreen from '../screens/DashboardScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import EstadisticasScreen from '../screens/EstadisticasScreen';
+import HistoryScreen from '../screens/HistoryScreen';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
-export default function TabNavigator() {
+// ─── Tab con las pestañas normales ───────────────────────────────────────────
+function TabScreens() {
   const route = useRoute<any>();
   const isGuest = route.params?.isGuest || false;
 
@@ -76,5 +80,19 @@ export default function TabNavigator() {
         </>
       )}
     </Tab.Navigator>
+  );
+}
+
+// ─── Stack que envuelve el Tab + pantallas de detalle sin tab bar ─────────────
+export default function TabNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Tabs" component={TabScreens} />
+      <Stack.Screen
+        name="History"
+        component={HistoryScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+    </Stack.Navigator>
   );
 }
