@@ -12,10 +12,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
-import * as Notifications from 'expo-notifications'; // <-- Añadido
-import Constants from 'expo-constants'; // <-- AÑADIDO: Para leer el app.json
+// import * as Notifications from 'expo-notifications'; // DESHABILITADO: no compatible con emulador
+// import Constants from 'expo-constants'; // DESHABILITADO: no compatible con emulador
 import { apiClient } from '../api/client';
-import { updateAlertSettings } from '../api/auth'; // <-- Añadido
+import { updateAlertSettings } from '../api/auth';
 
 // Iconos para el selector de tipo
 const TIPOS_ELECTRODOMESTICOS = [
@@ -37,7 +37,7 @@ export default function ProfileScreen({ navigation }: any) {
   // --- ESTADOS DE LA UI DE ALERTAS ---
   const [alertasActivas, setAlertasActivas] = useState(false);
   const [umbralPrecio, setUmbralPrecio] = useState('0.15');
-  const [isSavingAlert, setIsSavingAlert] = useState(false); // <-- Añadido para el botón de guardar
+  const [isSavingAlert, setIsSavingAlert] = useState(false);
 
   // --- ESTADOS DE DISPOSITIVOS ---
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -58,8 +58,7 @@ export default function ProfileScreen({ navigation }: any) {
       const resUser = await apiClient.get('/auth/perfil');
       const userData = resUser.data.usuario;
       setUser(userData);
-      
-      // <-- ACTUALIZADO: Cargamos la configuración real de alertas desde la BBDD
+
       setAlertasActivas(userData.alertaPrecioActiva || false);
       if (userData.alertaPrecioObjetivo) {
         setUmbralPrecio(userData.alertaPrecioObjetivo.toString());
@@ -74,49 +73,40 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
-  // 2. Función para guardar la configuración de la alerta (¡NUEVA!)
+  // 2. Función para guardar la configuración de la alerta
   const handleSaveAlert = async () => {
     try {
       setIsSavingAlert(true);
-      let pushToken = undefined;
 
-      // Si activa la alerta, comprobamos permisos y sacamos el Token
-      if (alertasActivas) {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
+      // DESHABILITADO: bloque de notificaciones no compatible con emulador
+      // if (alertasActivas) {
+      //   const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      //   let finalStatus = existingStatus;
+      //   if (existingStatus !== 'granted') {
+      //     const { status } = await Notifications.requestPermissionsAsync();
+      //     finalStatus = status;
+      //   }
+      //   if (finalStatus !== 'granted') {
+      //     Alert.alert('Permiso denegado', 'Necesitamos permisos para enviarte las alertas.');
+      //     setIsSavingAlert(false);
+      //     return;
+      //   }
+      //   const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      //   if (!projectId) {
+      //     Alert.alert('Error', 'No se encontró el Project ID. Revisa tu app.json y reinicia el servidor.');
+      //     setIsSavingAlert(false);
+      //     return;
+      //   }
+      //   const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+      //   pushToken = tokenData.data;
+      // }
 
-        if (finalStatus !== 'granted') {
-          Alert.alert('Permiso denegado', 'Necesitamos permisos para enviarte las alertas.');
-          setIsSavingAlert(false);
-          return;
-        }
+      const pushToken = undefined; // DESHABILITADO: no compatible con emulador
 
-        // <-- AÑADIDO: Leer el Project ID del app.json
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        
-        if (!projectId) {
-          Alert.alert('Error', 'No se encontró el Project ID. Revisa tu app.json y reinicia el servidor.');
-          setIsSavingAlert(false);
-          return;
-        }
-
-        // <-- AÑADIDO: Pasar el Project ID a la hora de pedir el Token
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: projectId,
-        });
-        
-        pushToken = tokenData.data;
-      }
-
-      // Enviamos al servidor
+      // Enviamos al servidor sin token de notificación
       const precioNum = parseFloat(umbralPrecio.replace(',', '.')) || 0;
       await updateAlertSettings(alertasActivas, precioNum, pushToken);
-      
+
       Alert.alert('¡Éxito!', 'Configuración de alertas guardada correctamente.');
     } catch (error) {
       console.error(error);
@@ -139,13 +129,13 @@ export default function ProfileScreen({ navigation }: any) {
         nombre: nuevoDispositivo.nombre,
         tipo: nuevoDispositivo.tipo,
         potencia: parseFloat(nuevoDispositivo.potencia),
-        duracion: 1, 
+        duracion: 1,
       });
-      
+
       setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '' });
       setMostrarFormulario(false);
       fetchProfileAndDevices();
-      
+
       Alert.alert('Éxito', 'Electrodoméstico creado correctamente.');
     } catch (error) {
       Alert.alert('Error', 'No se pudo añadir el dispositivo.');
@@ -197,7 +187,7 @@ export default function ProfileScreen({ navigation }: any) {
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        
+
         {/* Cabecera del Perfil Real */}
         <View style={styles.header}>
           <View style={styles.avatarMock}>
@@ -205,7 +195,7 @@ export default function ProfileScreen({ navigation }: any) {
           </View>
           <Text style={styles.userName}>{user?.email.split('@')[0]}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
-          
+
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Text style={styles.logoutText}>Cerrar Sesión</Text>
           </TouchableOpacity>
@@ -232,7 +222,7 @@ export default function ProfileScreen({ navigation }: any) {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Umbral de Precio (€/kWh)</Text>
               <View style={styles.stepperContainer}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.stepperButton}
                   onPress={() => setUmbralPrecio((prev) => (parseFloat(prev) - 0.01).toFixed(2))}
                 >
@@ -244,7 +234,7 @@ export default function ProfileScreen({ navigation }: any) {
                   onChangeText={setUmbralPrecio}
                   keyboardType="numeric"
                 />
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.stepperButton}
                   onPress={() => setUmbralPrecio((prev) => (parseFloat(prev) + 0.01).toFixed(2))}
                 >
@@ -254,8 +244,8 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
-          <TouchableOpacity 
-            style={styles.primaryButton} 
+          <TouchableOpacity
+            style={styles.primaryButton}
             onPress={handleSaveAlert}
             disabled={isSavingAlert}
           >
@@ -327,7 +317,7 @@ export default function ProfileScreen({ navigation }: any) {
                 devices.map((device) => {
                   const iconObj = TIPOS_ELECTRODOMESTICOS.find(t => t.id === device.tipo);
                   const icon = iconObj ? iconObj.icon : '⚡';
-                  
+
                   return (
                     <View key={device.id} style={styles.deviceItem}>
                       <Text style={styles.deviceItemIcon}>{icon}</Text>

@@ -21,6 +21,10 @@ export interface TodayDashboard {
   };
   tomorrow: {
     hasPrices: boolean;
+    prices: DashboardPricePoint[];
+    min: number | null;
+    max: number | null;
+    avg: number | null;
     message: string;
   };
 }
@@ -50,6 +54,14 @@ export class DashboardService {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowPrices = await this.pricesService.getPricesByDate(tomorrow);
 
+    const pricesTomorrow = tomorrowPrices.map((p) => ({
+      hour: p.datetime.getHours(),
+      priceKwh: Number(parseFloat(p.valueKwh as any).toFixed(4)),
+      priceMwh: Number(parseFloat(p.value as any).toFixed(2)),
+    }));
+
+    const tomorrowKwh = pricesTomorrow.map((p) => p.priceKwh);
+
     return {
       current: currentPrice
         ? {
@@ -66,9 +78,21 @@ export class DashboardService {
       },
       tomorrow: {
         hasPrices: tomorrowPrices.length > 0,
-        message: tomorrowPrices.length > 0
-          ? 'Precios de mañana disponibles'
-          : 'Precios de mañana se publican a las 21:00',
+        prices: pricesTomorrow,
+        min: tomorrowKwh.length > 0 ? Math.min(...tomorrowKwh) : null,
+        max: tomorrowKwh.length > 0 ? Math.max(...tomorrowKwh) : null,
+        avg:
+          tomorrowKwh.length > 0
+            ? Number(
+                (
+                  tomorrowKwh.reduce((a, b) => a + b, 0) / tomorrowKwh.length
+                ).toFixed(4),
+              )
+            : null,
+        message:
+          tomorrowPrices.length > 0
+            ? 'Precios de mañana disponibles'
+            : 'Precios de mañana se publican a las 21:00',
       },
     };
   }
