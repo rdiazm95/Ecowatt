@@ -264,7 +264,8 @@ export class PricesService {
         return;
       }
 
-      const precioKwh = precioActual.valueKwh;
+      // CORRECCIÓN: Convertir a Número explícitamente porque TypeORM lo devuelve como String
+      const precioKwh = Number(precioActual.valueKwh);
       this.logger.log(`Precio actual de la red: ${precioKwh.toFixed(5)} €/kWh`);
 
       const usuarios = await this.usersService.getUsersWithActiveAlerts();
@@ -277,7 +278,8 @@ export class PricesService {
       let alertasEnviadas = 0;
 
       for (const user of usuarios) {
-        if (user.alertaPrecioObjetivo && precioKwh <= user.alertaPrecioObjetivo) {
+        // CORRECCIÓN: Asegurarnos de que el objetivo del usuario también se evalúa como Número
+        if (user.alertaPrecioObjetivo && precioKwh <= Number(user.alertaPrecioObjetivo)) {
           
           if (user.expoPushToken) {
             // AHORA USAMOS TU SERVICIO PROFESIONAL DE FIREBASE
