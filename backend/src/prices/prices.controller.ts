@@ -25,6 +25,20 @@ export class PricesController {
     };
   }
 
+  // ─────────────────────────────────────────
+  // SOLO DESARROLLO: dispara el centinela manualmente
+  // Eliminar o proteger con guard antes de producción
+  // ─────────────────────────────────────────
+  @Get('test-alert')
+  async testAlert() {
+    await this.pricesService.checkAndSendAlerts();
+    return {
+      success: true,
+      message: 'Centinela ejecutado manualmente. Revisa los logs del servidor.',
+      timestamp: new Date(),
+    };
+  }
+
   @Get()
   async getPricesByDate(@Query('date') dateString: string) {
     const date = dateString ? new Date(dateString) : new Date();

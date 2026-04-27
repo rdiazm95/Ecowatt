@@ -9,12 +9,13 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// import * as Notifications from 'expo-notifications'; // DESHABILITADO: no compatible con emulador
-// import Constants from 'expo-constants'; // DESHABILITADO: no compatible con emulador
+import * as Notifications from 'expo-notifications'; // ← REACTIVADO
+import Constants from 'expo-constants';               // ← REACTIVADO
 import { apiClient } from '../api/client';
-import { updateAlertSettings, logout } from '../api/auth'; // ← AÑADIDO logout, ELIMINADO SecureStore
+import { updateAlertSettings, logout } from '../api/auth';
 
 
 // Iconos para el selector de tipo
@@ -64,12 +65,10 @@ export default function ProfileScreen({ navigation }: any) {
       const userData = resUser.data.usuario;
       setUser(userData);
 
-
       setAlertasActivas(userData.alertaPrecioActiva || false);
       if (userData.alertaPrecioObjetivo) {
         setUmbralPrecio(userData.alertaPrecioObjetivo.toString());
       }
-
 
       const resDevices = await apiClient.get('/devices');
       setDevices(resDevices.data);
@@ -85,18 +84,47 @@ export default function ProfileScreen({ navigation }: any) {
   const handleSaveAlert = async () => {
     try {
       setIsSavingAlert(true);
+      let pushToken: string | undefined = undefined;
 
+      if (alertasActivas) {
+        // Solo en dispositivo físico (los emuladores Android no soportan push tokens)
+        if (Platform.OS === 'android' && !Constants.isDevice) {
+          Alert.alert(
+            'Emulador detectado',
+            'Las notificaciones push solo funcionan en dispositivos físicos. La alerta de precio se guardará igualmente.',
+          );
+        } else {
+          // Solicitar permisos de notificación
+          const { status: existingStatus } = await Notifications.getPermissionsAsync();
+          let finalStatus = existingStatus;
 
-      // DESHABILITADO: bloque de notificaciones no compatible con emulador
-      // if (alertasActivas) { ... }
+          if (existingStatus !== 'granted') {
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
+          }
 
+          if (finalStatus !== 'granted') {
+            Alert.alert(
+              'Permiso denegado',
+              'Necesitamos permisos para enviarte las alertas de precio. Actívalos en los ajustes del móvil.',
+            );
+            setIsSavingAlert(false);
+            return;
+          }
 
-      const pushToken = undefined; // DESHABILITADO: no compatible con emulador
+          // Obtener el Expo Push Token real del dispositivo
+          const projectId =
+            Constants.expoConfig?.extra?.eas?.projectId ??
+            '33844626-f91a-423e-b5a3-d725f3081327';
 
+          const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+          pushToken = tokenData.data;
+          console.log('✅ Push token obtenido:', pushToken);
+        }
+      }
 
       const precioNum = parseFloat(umbralPrecio.replace(',', '.')) || 0;
       await updateAlertSettings(alertasActivas, precioNum, pushToken);
-
 
       Alert.alert('¡Éxito!', 'Configuración de alertas guardada correctamente.');
     } catch (error) {
@@ -115,7 +143,6 @@ export default function ProfileScreen({ navigation }: any) {
       return;
     }
 
-
     setAdding(true);
     try {
       await apiClient.post('/devices', {
@@ -125,11 +152,9 @@ export default function ProfileScreen({ navigation }: any) {
         duracion: 1,
       });
 
-
       setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '' });
       setMostrarFormulario(false);
       fetchProfileAndDevices();
-
 
       Alert.alert('Éxito', 'Electrodoméstico creado correctamente.');
     } catch (error) {
@@ -164,10 +189,10 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
 
-  // 5. Función para cerrar sesión ← CAMBIADO: usa logout() de auth.ts
+  // 5. Función para cerrar sesión
   const handleLogout = async () => {
-    await logout();                  // Borra el token del SecureStore
-    navigation.replace('Welcome');   // replace evita volver atrás con el botón back
+    await logout();
+    navigation.replace('Welcome');
   };
 
 
@@ -197,7 +222,6 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.userName}>{user?.email.split('@')[0]}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
 
-
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Text style={styles.logoutText}>Cerrar Sesión</Text>
           </TouchableOpacity>
@@ -211,7 +235,6 @@ export default function ProfileScreen({ navigation }: any) {
             Recibe una notificación cuando el precio de la luz baje del umbral establecido.
           </Text>
 
-
           <View style={styles.row}>
             <Text style={styles.label}>Activar Notificaciones Automáticas</Text>
             <Switch
@@ -221,7 +244,6 @@ export default function ProfileScreen({ navigation }: any) {
               thumbColor={'#fff'}
             />
           </View>
-
 
           {alertasActivas && (
             <View style={styles.inputContainer}>
@@ -249,7 +271,6 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
-
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={handleSaveAlert}
@@ -273,7 +294,6 @@ export default function ProfileScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
-
           {/* Formulario Desplegable */}
           {mostrarFormulario && (
             <View style={styles.formContainer}>
@@ -284,7 +304,6 @@ export default function ProfileScreen({ navigation }: any) {
                 value={nuevoDispositivo.nombre}
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, nombre: t})}
               />
-
 
               <Text style={styles.label}>Tipo de Electrodoméstico</Text>
               <View style={styles.iconGrid}>
@@ -302,7 +321,6 @@ export default function ProfileScreen({ navigation }: any) {
                 ))}
               </View>
 
-
               <Text style={styles.label}>Potencia Máxima (kW)</Text>
               <TextInput
                 style={styles.textInput}
@@ -312,13 +330,11 @@ export default function ProfileScreen({ navigation }: any) {
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
               />
 
-
               <TouchableOpacity style={styles.primaryButton} onPress={handleAddDevice} disabled={adding}>
                 {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
               </TouchableOpacity>
             </View>
           )}
-
 
           {/* Lista de Dispositivos Reales */}
           {!mostrarFormulario && (
@@ -329,7 +345,6 @@ export default function ProfileScreen({ navigation }: any) {
                 devices.map((device) => {
                   const iconObj = TIPOS_ELECTRODOMESTICOS.find(t => t.id === device.tipo);
                   const icon = iconObj ? iconObj.icon : '⚡';
-
 
                   return (
                     <View key={device.id} style={styles.deviceItem}>
@@ -347,7 +362,6 @@ export default function ProfileScreen({ navigation }: any) {
               )}
             </View>
           )}
-
 
         </View>
 
