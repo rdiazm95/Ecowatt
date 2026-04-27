@@ -53,6 +53,19 @@ export class AuthService {
   }
 
   // ==========================================
+  // NUEVO: OBTENER PERFIL COMPLETO (Para persistir el estado de la UI)
+  // ==========================================
+  async getUserProfile(email: string) {
+    const user = await this.usersService.findOneByEmail(email);
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    // Quitamos la contraseña antes de devolver los datos al frontend
+    const { passwordHash, ...result } = user;
+    return result;
+  }
+
+  // ==========================================
   // NUEVO: PASO 1 - SOLICITAR RECUPERACIÓN DE CONTRASEÑA
   // ==========================================
   async forgotPassword(email: string) {

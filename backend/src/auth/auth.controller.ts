@@ -20,12 +20,14 @@ export class AuthController {
   // --- ENDPOINT PROTEGIDO ---
   @UseGuards(AuthGuard('jwt')) // ESTA ES LA CERRADURA
   @Get('perfil')
-  getProfile(@Request() req) {
+  async getProfile(@Request() req) {
     // Si llegas aquí, es que tu token era válido. 
-    // req.user contiene los datos de la función validate() de JwtStrategy
+    // Usamos el email del token para buscar todo el perfil completo en la BD
+    const usuarioCompleto = await this.authService.getUserProfile(req.user.email);
+
     return {
       mensaje: '¡Has entrado a la zona VIP!',
-      usuario: req.user
+      usuario: usuarioCompleto
     };
   }
 

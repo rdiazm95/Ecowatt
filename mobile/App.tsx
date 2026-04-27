@@ -1,29 +1,29 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-// import * as Notifications from 'expo-notifications'; // DESHABILITADO: no compatible con emulador
+import * as Notifications from 'expo-notifications'; // ← DESCOMENTADO: Necesario para manejar las notificaciones
 
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import TabNavigator from './src/navigation/TabNavigator';
-import AuthLoadingScreen from './src/screens/AuthLoadingScreen'; // ← NUEVO
+import AuthLoadingScreen from './src/screens/AuthLoadingScreen';
 
-// DESHABILITADO: no compatible con emulador
-// Notifications.setNotificationHandler({
-//   handleNotification: async () => ({
-//     shouldShowAlert: true,
-//     shouldPlaySound: true,
-//     shouldSetBadge: false,
-//     shouldShowBanner: true,
-//     shouldShowList: true,
-//   }),
-// });
+// ← DESCOMENTADO: Configura cómo se comportan las notificaciones cuando la app está abierta
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const Stack = createNativeStackNavigator();
 
-// DESHABILITADO: no compatible con emulador
+// Mantenemos esto comentado porque ya pides los permisos y el token directamente en ProfileScreen.tsx
 // async function registerForPushNotifications() {
 //   const { status } = await Notifications.requestPermissionsAsync();
 //   if (status !== 'granted') {
@@ -39,16 +39,16 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
   useEffect(() => {
-    // registerForPushNotifications(); // DESHABILITADO: no compatible con emulador
+    // registerForPushNotifications();
   }, []);
 
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="AuthLoading" // ← NUEVO: arranca en el check de sesión
+        initialRouteName="AuthLoading" // Arranca en el check de sesión
         screenOptions={{ headerShown: false }}
       >
-        {/* Check de sesión al arrancar ← NUEVO */}
+        {/* Check de sesión al arrancar */}
         <Stack.Screen name="AuthLoading" component={AuthLoadingScreen} />
 
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
