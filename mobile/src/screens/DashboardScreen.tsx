@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Dimensions,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
@@ -23,6 +24,9 @@ const App = () => {
   const [data, setData] = useState<TodayDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today');
+  const [viewMode, setViewMode] = useState<'chart' | 'hours'>('chart');
 
   useEffect(() => {
     const load = async () => {
@@ -56,105 +60,276 @@ const App = () => {
     );
   }
 
+  const now = new Date();
+  const currentHour = now.getHours();
+
+  const todayData = data.today;
+  // ✅ Tipado limpio, sin any
+  const tomorrowData = data.tomorrow;
+
+  // ✅ Usamos hasPrices del backend como fuente de verdad
+  const tomorrowAvailable = tomorrowData.hasPrices && tomorrowData.prices.length > 0;
+  const tomorrowUnlockedByTime = currentHour >= 21;
+
+  const showingTomorrow = selectedDay === 'tomorrow';
+
+  const selectedPrices = showingTomorrow && tomorrowAvailable
+    ? tomorrowData.prices
+    : todayData.prices;
+
+  const selectedAvg = showingTomorrow && tomorrowAvailable
+    ? Number(tomorrowData.avg ?? 0)
+    : todayData.avg;
+
+  const selectedMin = showingTomorrow && tomorrowAvailable
+    ? Number(tomorrowData.min ?? 0)
+    : todayData.min;
+
+  const selectedMax = showingTomorrow && tomorrowAvailable
+    ? Number(tomorrowData.max ?? 0)
+    : todayData.max;
+
   const current = data.current;
-  const prices = data.today.prices;
-  const avg = data.today.avg;
 
   const chartData = {
-    // MODIFICACIÓN AQUÍ: Mostramos el texto solo cada 4 horas. 
-    // Las demás horas devuelven un string vacío para no solaparse.
-    labels: prices.map((p) => 
+    labels: selectedPrices.map((p) =>
       p.hour % 4 === 0 ? `${p.hour.toString().padStart(2, '0')}h` : ''
     ),
     datasets: [
       {
-        data: prices.map((p) => p.priceKwh),
+        data: selectedPrices.map((p) => p.priceKwh),
         color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
         strokeWidth: 3,
       },
     ],
   };
 
+  const noTomorrowDataMessage = tomorrowUnlockedByTime
+    ? 'Los precios de mañana todavía no están disponibles.'
+    : 'Los precios de mañana no estarán disponibles hasta las 21:00.';
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>EcoWatt - Hoy</Text>
+        <Text style={styles.title}>
+          EcoWatt - {showingTomorrow ? 'Mañana' : 'Hoy'}
+        </Text>
 
-        {/* Precio actual */}
+        <View style={styles.segmentWrapper}>
+          <View style={styles.segment}>
+            <TouchableOpacity
+              style={[
+                styles.segmentButton,
+                selectedDay === 'today' && styles.segmentButtonActive,
+              ]}
+              onPress={() => setSelectedDay('today')}
+            >
+              <Text
+                style={[
+                  styles.segmentButtonText,
+                  selectedDay === 'today' && styles.segmentButtonTextActive,
+                ]}
+              >
+                Hoy
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.segmentButton,
+                selectedDay === 'tomorrow' && styles.segmentButtonActive,
+              ]}
+              onPress={() => setSelectedDay('tomorrow')}
+            >
+              <Text
+                style={[
+                  styles.segmentButtonText,
+                  selectedDay === 'tomorrow' && styles.segmentButtonTextActive,
+                ]}
+              >
+                Mañana
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Precio actual</Text>
-          {current ? (
+          <Text style={styles.sectionTitle}>
+            {showingTomorrow ? 'Estado de mañana' : 'Precio actual'}
+          </Text>
+
+          {!showingTomorrow ? (
+            current ? (
+              <>
+                <Text style={styles.currentPrice}>
+                  {current.priceKwh.toFixed(4)} €/kWh
+                </Text>
+                <Text style={styles.currentMwh}>
+                  ({current.priceMwh.toFixed(2)} €/MWh)
+                </Text>
+                <View
+                  style={[
+                    styles.semaphore,
+                    { backgroundColor: getPriceLevelColor(current.priceKwh, todayData.avg) },
+                  ]}
+                />
+              </>
+            ) : (
+              <Text style={styles.infoText}>No hay precio actual disponible.</Text>
+            )
+          ) : tomorrowAvailable ? (
             <>
               <Text style={styles.currentPrice}>
-                {current.priceKwh.toFixed(4)} €/kWh
+                {selectedAvg.toFixed(4)} €/kWh
               </Text>
               <Text style={styles.currentMwh}>
-                ({current.priceMwh.toFixed(2)} €/MWh)
+                Media prevista para mañana
               </Text>
               <View
                 style={[
                   styles.semaphore,
-                  { backgroundColor: getPriceLevelColor(current.priceKwh, avg) },
+                  { backgroundColor: getPriceLevelColor(selectedAvg, selectedAvg) },
                 ]}
               />
             </>
           ) : (
-            <Text>No hay precio actual disponible</Text>
+            <>
+              <Text style={styles.infoText}>{noTomorrowDataMessage}</Text>
+              <Text style={styles.tomorrowText}>{tomorrowData.message}</Text>
+            </>
           )}
         </View>
 
-        {/* Gráfica */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Curva de precios de hoy</Text>
-          <LineChart
-            data={chartData}
-            width={screenWidth - 64}
-            height={250}
-            yAxisLabel="€"
-            yAxisSuffix=""
-            withInnerLines={false} // Opcional: Quita las líneas de fondo para que se vea aún más limpio
-            chartConfig={{
-              backgroundColor: '#ffffff',
-              backgroundGradientFrom: '#ffffff',
-              backgroundGradientTo: '#ffffff',
-              decimalPlaces: 4,
-              color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
-              style: {
-                borderRadius: 16,
-              },
-              propsForDots: {
-                r: '3', // Hacemos los puntitos un poco más visibles
-                strokeWidth: '2',
-                stroke: '#3498db',
-              },
-            }}
-            bezier
-            style={styles.chart}
-            // Eliminados verticalLabelRotation y xLabelsOffset para que se alinee natural
-          />
+          <View style={styles.headerRow}>
+            <Text style={styles.sectionTitle}>
+              {showingTomorrow ? 'Precios de mañana' : 'Precios de hoy'}
+            </Text>
+
+            <View style={styles.smallSegment}>
+              <TouchableOpacity
+                style={[
+                  styles.smallSegmentButton,
+                  viewMode === 'chart' && styles.smallSegmentButtonActive,
+                ]}
+                onPress={() => setViewMode('chart')}
+              >
+                <Text
+                  style={[
+                    styles.smallSegmentText,
+                    viewMode === 'chart' && styles.smallSegmentTextActive,
+                  ]}
+                >
+                  Gráfica
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.smallSegmentButton,
+                  viewMode === 'hours' && styles.smallSegmentButtonActive,
+                ]}
+                onPress={() => setViewMode('hours')}
+              >
+                <Text
+                  style={[
+                    styles.smallSegmentText,
+                    viewMode === 'hours' && styles.smallSegmentTextActive,
+                  ]}
+                >
+                  Precios hora
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {showingTomorrow && !tomorrowAvailable ? (
+            <View style={styles.noticeBox}>
+              <Text style={styles.noticeText}>{noTomorrowDataMessage}</Text>
+            </View>
+          ) : viewMode === 'chart' ? (
+            <LineChart
+              data={chartData}
+              width={screenWidth - 64}
+              height={250}
+              yAxisLabel="€"
+              yAxisSuffix=""
+              withInnerLines={false}
+              chartConfig={{
+                backgroundColor: '#ffffff',
+                backgroundGradientFrom: '#ffffff',
+                backgroundGradientTo: '#ffffff',
+                decimalPlaces: 4,
+                color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+                style: { borderRadius: 16 },
+                propsForDots: {
+                  r: '3',
+                  strokeWidth: '2',
+                  stroke: '#3498db',
+                },
+              }}
+              bezier
+              style={styles.chart}
+            />
+          ) : (
+            <View>
+              {selectedPrices.map((p) => (
+                <View key={p.hour} style={styles.hourRow}>
+                  <View style={styles.hourLeft}>
+                    <View
+                      style={[
+                        styles.hourDot,
+                        { backgroundColor: getPriceLevelColor(p.priceKwh, selectedAvg) },
+                      ]}
+                    />
+                    <Text style={styles.hourLabel}>
+                      {String(p.hour).padStart(2, '0')}:00 -{' '}
+                      {String((p.hour + 1) % 24).padStart(2, '0')}:00
+                    </Text>
+                  </View>
+                  <Text style={styles.hourPrice}>{p.priceKwh.toFixed(4)} €/kWh</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* Resumen */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Resumen del día</Text>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Mínimo:</Text>
-            <Text style={[styles.summaryValue, { color: '#2ecc71' }]}>{data.today.min.toFixed(4)} €/kWh</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Medio:</Text>
-            <Text style={[styles.summaryValue, { color: '#f1c40f' }]}>{data.today.avg.toFixed(4)} €/kWh</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Máximo:</Text>
-            <Text style={[styles.summaryValue, { color: '#e74c3c' }]}>{data.today.max.toFixed(4)} €/kWh</Text>
-          </View>
-          
-          <Text style={styles.tomorrowText}>
-            {data.tomorrow.message}
+          <Text style={styles.sectionTitle}>
+            Resumen {showingTomorrow ? 'de mañana' : 'del día'}
           </Text>
+
+          {showingTomorrow && !tomorrowAvailable ? (
+            <Text style={styles.infoText}>{noTomorrowDataMessage}</Text>
+          ) : (
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Mínimo:</Text>
+                <Text style={[styles.summaryValue, { color: '#2ecc71' }]}>
+                  {selectedMin.toFixed(4)} €/kWh
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Medio:</Text>
+                <Text style={[styles.summaryValue, { color: '#f1c40f' }]}>
+                  {selectedAvg.toFixed(4)} €/kWh
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Máximo:</Text>
+                <Text style={[styles.summaryValue, { color: '#e74c3c' }]}>
+                  {selectedMax.toFixed(4)} €/kWh
+                </Text>
+              </View>
+            </>
+          )}
+
+          <Text style={styles.tomorrowText}>{tomorrowData.message}</Text>
         </View>
+
         <View style={{ height: 30 }} />
       </ScrollView>
     </SafeAreaView>
@@ -165,21 +340,126 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
   scrollContainer: { padding: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#2c3e50' },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#2c3e50',
+  },
+  segmentWrapper: { marginBottom: 16 },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: '#eaf1f7',
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  segmentButtonActive: { backgroundColor: '#3498db' },
+  segmentButtonText: { color: '#5d6d7e', fontWeight: '700' },
+  segmentButtonTextActive: { color: '#fff' },
+  smallSegment: {
+    flexDirection: 'row',
+    backgroundColor: '#eef3f7',
+    borderRadius: 10,
+    padding: 4,
+  },
+  smallSegmentButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  smallSegmentButtonActive: { backgroundColor: '#3498db' },
+  smallSegmentText: { color: '#5d6d7e', fontWeight: '600', fontSize: 12 },
+  smallSegmentTextActive: { color: '#fff' },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#34495e' },
-  currentPrice: { fontSize: 32, fontWeight: '800', marginBottom: 4, color: '#2c3e50', textAlign: 'center' },
-  currentMwh: { fontSize: 14, color: '#7f8c8d', marginBottom: 16, textAlign: 'center' },
-  semaphore: { width: 40, height: 40, borderRadius: 20, alignSelf: 'center', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 2 },
+  headerRow: { gap: 12, marginBottom: 8 },
+  currentPrice: {
+    fontSize: 32,
+    fontWeight: '800',
+    marginBottom: 4,
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  currentMwh: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  semaphore: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignSelf: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
   chart: { marginVertical: 8, borderRadius: 16, alignSelf: 'center' },
   loadingText: { marginTop: 12, fontSize: 16, color: '#7f8c8d' },
   error: { color: '#e74c3c', fontSize: 16, textAlign: 'center' },
-  tomorrowText: { marginTop: 16, fontStyle: 'italic', color: '#3498db', textAlign: 'center', fontWeight: '500' },
-  
-  // Estilos añadidos para que el Resumen quede mejor alineado
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#ecf0f1' },
+  tomorrowText: {
+    marginTop: 16,
+    fontStyle: 'italic',
+    color: '#3498db',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  infoText: { textAlign: 'center', color: '#7f8c8d', fontSize: 15, lineHeight: 22 },
+  noticeBox: {
+    backgroundColor: '#f8f9fb',
+    borderColor: '#dfe6ec',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 6,
+  },
+  noticeText: { textAlign: 'center', color: '#5d6d7e', fontSize: 14, lineHeight: 20 },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ecf0f1',
+  },
   summaryLabel: { fontSize: 16, color: '#7f8c8d', fontWeight: '500' },
-  summaryValue: { fontSize: 16, fontWeight: 'bold' }
+  summaryValue: { fontSize: 16, fontWeight: 'bold' },
+  hourRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ecf0f1',
+  },
+  hourLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 12,
+  },
+  hourDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
+  hourLabel: { fontSize: 14, color: '#2c3e50', fontWeight: '500' },
+  hourPrice: { fontSize: 14, color: '#2c3e50', fontWeight: '700' },
 });
 
 export default App;

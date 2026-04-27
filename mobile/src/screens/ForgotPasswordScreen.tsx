@@ -16,22 +16,25 @@ import { forgotPassword, resetPassword } from '../api/auth';
 export default function ForgotPasswordScreen({ navigation }: any) {
   const [step, setStep] = useState(1); // 1: Email, 2: Código, 3: Nueva Pass
   const [loading, setLoading] = useState(false);
-  
+
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Lógica para enviar el email
   const handleRequestCode = async () => {
     if (!email.includes('@')) {
       Alert.alert('Error', 'Introduce un email válido');
       return;
     }
+
     setLoading(true);
     try {
       await forgotPassword(email);
-      Alert.alert('Enviado', 'Revisa tu bandeja de entrada (Mailtrap).');
+      Alert.alert(
+        '📧 Código enviado',
+        `Te hemos enviado un código de 6 dígitos a ${email}.\n\nRevisa también la carpeta de spam.\n\nEl código caduca en 15 minutos.`
+      );
       setStep(2);
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.message || 'Error al enviar el código');
@@ -40,16 +43,17 @@ export default function ForgotPasswordScreen({ navigation }: any) {
     }
   };
 
-  // Lógica para cambiar la contraseña
   const handleResetPassword = async () => {
     if (code.length !== 6) {
       Alert.alert('Error', 'El código debe ser de 6 dígitos');
       return;
     }
+
     if (newPassword.length < 6) {
       Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
       return;
     }
+
     if (newPassword !== confirmPassword) {
       Alert.alert('Error', 'Las contraseñas no coinciden');
       return;
@@ -69,7 +73,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.content}
       >
@@ -78,29 +82,41 @@ export default function ForgotPasswordScreen({ navigation }: any) {
         </TouchableOpacity>
 
         <Text style={styles.title}>Recuperar Contraseña</Text>
-        
+
         {step === 1 ? (
           <View>
-            <Text style={styles.subtitle}>Introduce tu email y te enviaremos un código de 6 dígitos.</Text>
+            <Text style={styles.subtitle}>
+              Introduce tu email y te enviaremos un código de 6 dígitos.
+            </Text>
+
             <TextInput
               style={styles.input}
               placeholder="Email"
+              placeholderTextColor="#95a5a6"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
             />
+
             <TouchableOpacity style={styles.button} onPress={handleRequestCode} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>ENVIAR CÓDIGO</Text>}
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>ENVIAR CÓDIGO</Text>
+              )}
             </TouchableOpacity>
           </View>
         ) : (
           <View>
-            <Text style={styles.subtitle}>Introduce el código enviado a {email} y tu nueva contraseña.</Text>
-            
+            <Text style={styles.subtitle}>
+              Introduce el código enviado a {email} y tu nueva contraseña.
+            </Text>
+
             <TextInput
               style={styles.input}
               placeholder="Código de 6 dígitos"
+              placeholderTextColor="#95a5a6"
               value={code}
               onChangeText={setCode}
               keyboardType="number-pad"
@@ -110,6 +126,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="Nueva Contraseña"
+              placeholderTextColor="#95a5a6"
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
@@ -118,13 +135,18 @@ export default function ForgotPasswordScreen({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="Confirmar Nueva Contraseña"
+              placeholderTextColor="#95a5a6"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
             />
 
             <TouchableOpacity style={styles.button} onPress={handleResetPassword} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>ACTUALIZAR CONTRASEÑA</Text>}
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>ACTUALIZAR CONTRASEÑA</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -138,9 +160,36 @@ const styles = StyleSheet.create({
   content: { padding: 30, flex: 1, justifyContent: 'center' },
   backBtn: { position: 'absolute', top: 20, left: 20 },
   backText: { color: '#3498db', fontWeight: '600' },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50', marginBottom: 10, textAlign: 'center' },
-  subtitle: { fontSize: 15, color: '#7f8c8d', marginBottom: 30, textAlign: 'center', lineHeight: 22 },
-  input: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#eee' },
-  button: { backgroundColor: '#2c3e50', padding: 18, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#7f8c8d',
+    marginBottom: 30,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  input: {
+    backgroundColor: '#f9f9f9',
+    color: '#2c3e50',
+    fontSize: 16,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#bdc3c7',
+  },
+  button: {
+    backgroundColor: '#2c3e50',
+    padding: 18,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 10,
+  },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });

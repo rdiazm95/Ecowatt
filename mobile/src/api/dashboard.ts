@@ -1,4 +1,4 @@
-import { apiClient } from './client'; 
+import { apiClient } from './client';
 
 export type DashboardPricePoint = {
   hour: number;
@@ -20,12 +20,15 @@ export type TodayDashboard = {
   };
   tomorrow: {
     hasPrices: boolean;
+    prices: DashboardPricePoint[];
+    min: number | null;
+    max: number | null;
+    avg: number | null;
     message: string;
   };
 };
 
 export async function fetchTodayDashboard(): Promise<TodayDashboard> {
-  
-  const res = await apiClient.get<TodayDashboard>('/dashboard/today'); 
+  const res = await apiClient.get<TodayDashboard>('/dashboard/today');
   return res.data;
 }

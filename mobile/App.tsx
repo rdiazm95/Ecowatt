@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import * as Notifications from 'expo-notifications';
+// import * as Notifications from 'expo-notifications'; // DESHABILITADO: no compatible con emulador
 
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -9,37 +9,36 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import TabNavigator from './src/navigation/TabNavigator';
 
-// Comportamiento de notificaciones cuando la app está abierta
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// DESHABILITADO: no compatible con emulador
+// Notifications.setNotificationHandler({
+//   handleNotification: async () => ({
+//     shouldShowAlert: true,
+//     shouldPlaySound: true,
+//     shouldSetBadge: false,
+//     shouldShowBanner: true,
+//     shouldShowList: true,
+//   }),
+// });
 
 const Stack = createNativeStackNavigator();
 
-async function registerForPushNotifications() {
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== 'granted') {
-    alert('¡Necesitamos permiso para enviarte alertas de precio!');
-    return;
-  }
-
-  const token = await Notifications.getExpoPushTokenAsync({
-    projectId: '33844626-f91a-423e-b5a3-d725f3081327',
-  });
-
-  console.log('Token Push:', token.data);
-  return token.data;
-}
+// DESHABILITADO: no compatible con emulador
+// async function registerForPushNotifications() {
+//   const { status } = await Notifications.requestPermissionsAsync();
+//   if (status !== 'granted') {
+//     alert('¡Necesitamos permiso para enviarte alertas de precio!');
+//     return;
+//   }
+//   const token = await Notifications.getExpoPushTokenAsync({
+//     projectId: '33844626-f91a-423e-b5a3-d725f3081327',
+//   });
+//   console.log('Token Push:', token.data);
+//   return token.data;
+// }
 
 export default function App() {
   useEffect(() => {
-    registerForPushNotifications();
+    // registerForPushNotifications(); // DESHABILITADO: no compatible con emulador
   }, []);
 
   return (

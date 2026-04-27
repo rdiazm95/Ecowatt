@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useRoute } from '@react-navigation/native'; // <-- 1. Importamos el lector de rutas
+import { useRoute } from '@react-navigation/native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
@@ -10,41 +11,66 @@ import EstadisticasScreen from '../screens/EstadisticasScreen';
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
-  // 2. Leemos los parámetros que nos llegan desde WelcomeScreen o Login
-  const route = useRoute<any>(); 
-  const isGuest = route.params?.isGuest || false; 
+  const route = useRoute<any>();
+  const isGuest = route.params?.isGuest || false;
 
   return (
     <Tab.Navigator
-      screenOptions={{
-        tabBarActiveTintColor: '#3498db',
-        tabBarInactiveTintColor: 'gray',
+      screenOptions={({ route }) => ({
         headerShown: false,
-      }}
+        tabBarActiveTintColor: '#3498db',
+        tabBarInactiveTintColor: '#95a5a6',
+        tabBarHideOnKeyboard: true,
+        tabBarStyle: {
+          height: 68,
+          paddingTop: 8,
+          paddingBottom: 8,
+          backgroundColor: '#ffffff',
+          borderTopWidth: 1,
+          borderTopColor: '#e8eef3',
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: keyof typeof Ionicons.glyphMap = 'ellipse';
+
+          if (route.name === 'Dashboard') {
+            iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Simulador') {
+            iconName = focused ? 'flash' : 'flash-outline';
+          } else if (route.name === 'Estadisticas') {
+            iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
+          }
+
+          return <Ionicons name={iconName} size={22} color={color} />;
+        },
+      })}
     >
-      {/* 3. La pantalla principal (Dashboard) es SIEMPRE pública */}
-      <Tab.Screen 
-        name="Dashboard" 
-        component={DashboardScreen} 
-        options={{ tabBarLabel: 'Hoy', tabBarIcon: () => <></> /* Si usas iconos, ponlos aquí */ }}
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{ tabBarLabel: 'Hoy' }}
       />
 
-      {/* 4. Las pantallas Premium SOLO se muestran si NO es invitado (!isGuest) */}
       {!isGuest && (
         <>
-          <Tab.Screen 
-            name="Simulador" 
-            component={SimuladorScreen} 
+          <Tab.Screen
+            name="Simulador"
+            component={SimuladorScreen}
             options={{ tabBarLabel: 'Simulador' }}
           />
-          <Tab.Screen 
-            name="Estadisticas" 
-            component={EstadisticasScreen} 
+          <Tab.Screen
+            name="Estadisticas"
+            component={EstadisticasScreen}
             options={{ tabBarLabel: 'Estadísticas' }}
           />
-          <Tab.Screen 
-            name="Profile" 
-            component={ProfileScreen} 
+          <Tab.Screen
+            name="Profile"
+            component={ProfileScreen}
             options={{ tabBarLabel: 'Perfil' }}
           />
         </>
