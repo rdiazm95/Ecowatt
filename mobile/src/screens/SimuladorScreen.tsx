@@ -244,7 +244,15 @@ export default function SimuladorScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
 
-          {simulacion ? (
+          {/* NUEVA LÓGICA: Si no hay electrodomésticos, muestra el mensaje */}
+          {devices.length === 0 ? (
+            <View style={{ height: 180, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }}>
+              <Text style={{ fontSize: 36, marginBottom: 10 }}>🔌</Text>
+              <Text style={{ color: '#7f8c8d', textAlign: 'center', fontSize: 15, fontWeight: '500', fontStyle: 'italic' }}>
+                Crea un electrodoméstico en tu perfil para calcular la curva de precios.
+              </Text>
+            </View>
+          ) : simulacion ? (
             <LineChart
               data={{ labels: chartLabels, datasets: [{ data: chartData }] }}
               width={screenWidth - 64}
@@ -414,7 +422,12 @@ export default function SimuladorScreen() {
             </View>
           )}
 
-          <TouchableOpacity style={styles.button} onPress={handleProgramar} disabled={saving}>
+          {/* BOTÓN DESHABILITADO SI NO HAY DISPOSITIVOS */}
+          <TouchableOpacity 
+            style={[styles.button, devices.length === 0 && { backgroundColor: '#bdc3c7' }]} 
+            onPress={handleProgramar} 
+            disabled={saving || devices.length === 0}
+          >
             {saving ? (
               <ActivityIndicator color="#fff" />
             ) : (

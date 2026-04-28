@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, ActivityIndicator, StyleSheet,
   Dimensions, ScrollView, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { fetchHistory, HistoryDayPoint } from '../api/history';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -18,14 +18,21 @@ export default function HistoryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [metric, setMetric] = useState<'avg' | 'min' | 'max'>('avg');
 
-  useEffect(() => {
-    fetchHistory()
-      .then(setData)
-      .catch(() => setError('No se pudo cargar el histórico'))
-      .finally(() => setLoading(false));
-  }, []);
+  // SOLUCIÓN: Refresca el histórico automáticamente al entrar a la pantalla
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistory()
+        .then((res) => {
+          setData(res);
+          setError(null);
+        })
+        .catch(() => setError('No se pudo cargar el histórico'))
+        .finally(() => setLoading(false));
+    }, [])
+  );
 
-  if (loading) {
+  // Muestra el spinner de carga SOLO la primera vez (cuando no hay datos)
+  if (loading && data.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color="#3498db" />
@@ -34,13 +41,17 @@ export default function HistoryScreen() {
     );
   }
 
-  if (error || data.length === 0) {
+  // Muestra el error SOLO si no hay datos previamente cargados
+  if (error && data.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
         <Text style={styles.error}>{error ?? 'Sin datos disponibles'}</Text>
       </SafeAreaView>
     );
   }
+
+  // Prevenir crasheos si por algún motivo la data sigue vacía al renderizar
+  if (data.length === 0) return null;
 
   // Etiquetas: solo mostramos 1 de cada 5 días para no saturar
   const labels = data.map((d, i) => {

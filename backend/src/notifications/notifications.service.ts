@@ -30,6 +30,7 @@ export class NotificationsService implements OnModuleInit {
         android: {
           priority: 'high',
           notification: {
+            channelId: 'default', // <-- EL TRUCO PARA ANDROID 8.0+ AÑADIDO AQUÍ
             sound: 'default',
             color: '#01696f',
           },

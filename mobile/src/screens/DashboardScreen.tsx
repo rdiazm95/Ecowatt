@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { fetchTodayDashboard, TodayDashboard } from '../api/dashboard';
 
@@ -31,22 +31,27 @@ const App = () => {
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today');
   const [viewMode, setViewMode] = useState<'chart' | 'hours'>('chart');
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const dashboard = await fetchTodayDashboard();
-        setData(dashboard);
-      } catch (e) {
-        console.error(e);
-        setError('No se pudo cargar el dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  // SOLUCIÓN: useFocusEffect recarga los datos silenciosamente al entrar a la pestaña
+  useFocusEffect(
+    useCallback(() => {
+      const load = async () => {
+        try {
+          const dashboard = await fetchTodayDashboard();
+          setData(dashboard);
+          setError(null);
+        } catch (e) {
+          console.error(e);
+          setError('No se pudo cargar el dashboard');
+        } finally {
+          setLoading(false);
+        }
+      };
+      load();
+    }, [])
+  );
 
-  if (loading) {
+  // Solo mostramos el spinner a pantalla completa si es la PRIMERA vez que carga
+  if (loading && !data) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color="#3498db" />
@@ -55,7 +60,7 @@ const App = () => {
     );
   }
 
-  if (error || !data) {
+  if (error && !data) {
     return (
       <SafeAreaView style={styles.center}>
         <Text style={styles.error}>{error ?? 'Error desconocido'}</Text>
@@ -65,6 +70,9 @@ const App = () => {
 
   const now = new Date();
   const currentHour = now.getHours();
+
+  // Protección para que no falle al hacer transiciones si no hay datos
+  if (!data) return null;
 
   const todayData = data.today;
   const tomorrowData = data.tomorrow;
