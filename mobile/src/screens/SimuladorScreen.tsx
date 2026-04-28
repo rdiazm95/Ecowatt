@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
+  KeyboardAvoidingView, // NUEVO
+  Platform,           // NUEVO
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -222,275 +224,285 @@ export default function SimuladorScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.pageTitle}>Programador Diario</Text>
+      {/* NUEVO: Envolvemos el ScrollView en un KeyboardAvoidingView */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled" // Para que los botones se puedan pulsar aunque el teclado esté abierto
+        >
+          <Text style={styles.pageTitle}>Programador Diario</Text>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>1. Selecciona un electrodoméstico</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
-            {devices.map((device) => {
-              const isSelected = selectedDevice?.id === device.id;
-              let icon = '⚡';
-              if (device.tipo === 'lavadora') icon = '👕';
-              if (device.tipo === 'lavavajillas') icon = '🍽️';
-              if (device.tipo === 'horno') icon = '🍳';
-              if (device.tipo === 'microondas') icon = '🍱';
-              if (device.tipo === 'frigorifico') icon = '❄️';
-              if (device.tipo === 'tv') icon = '📺';
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>1. Selecciona un electrodoméstico</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel} keyboardShouldPersistTaps="handled">
+              {devices.map((device) => {
+                const isSelected = selectedDevice?.id === device.id;
+                let icon = '⚡';
+                if (device.tipo === 'lavadora') icon = '👕';
+                if (device.tipo === 'lavavajillas') icon = '🍽️';
+                if (device.tipo === 'horno') icon = '🍳';
+                if (device.tipo === 'microondas') icon = '🍱';
+                if (device.tipo === 'frigorifico') icon = '❄️';
+                if (device.tipo === 'tv') icon = '📺';
 
-              return (
-                <TouchableOpacity
-                  key={device.id}
-                  style={[styles.deviceCard, isSelected && styles.deviceCardSelected]}
-                  onPress={() => setSelectedDevice(device)}
-                >
-                  <Text style={styles.deviceIcon}>{icon}</Text>
-                  <Text style={[styles.deviceName, isSelected && styles.deviceNameSelected]}>
-                    {device.nombre}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+                return (
+                  <TouchableOpacity
+                    key={device.id}
+                    style={[styles.deviceCard, isSelected && styles.deviceCardSelected]}
+                    onPress={() => setSelectedDevice(device)}
+                  >
+                    <Text style={styles.deviceIcon}>{icon}</Text>
+                    <Text style={[styles.deviceName, isSelected && styles.deviceNameSelected]}>
+                      {device.nombre}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
 
-          {devices.length === 0 ? (
-            <View style={{ height: 180, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }}>
-              <Text style={{ fontSize: 36, marginBottom: 10 }}>🔌</Text>
-              <Text style={{ color: '#7f8c8d', textAlign: 'center', fontSize: 15, fontWeight: '500', fontStyle: 'italic' }}>
-                Crea un electrodoméstico en tu perfil para calcular la curva de precios.
-              </Text>
-            </View>
-          ) : simulacion ? (
-            <LineChart
-              data={{ labels: chartLabels, datasets: [{ data: chartData }] }}
-              width={screenWidth - 64}
-              height={180}
-              yAxisLabel="€"
-              yAxisSuffix=""
-              withInnerLines={false}
-              chartConfig={{
-                backgroundColor: '#ffffff',
-                backgroundGradientFrom: '#ffffff',
-                backgroundGradientTo: '#ffffff',
-                decimalPlaces: 4,
-                color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
-                style: { borderRadius: 16 },
-                propsForDots: { r: '3', strokeWidth: '2', stroke: '#3498db' },
-              }}
-              bezier
-              style={styles.chart}
-            />
-          ) : (
-            <View style={{ height: 180, justifyContent: 'center', alignItems: 'center' }}>
-              <ActivityIndicator color="#3498db" />
-              <Text style={{ color: '#bdc3c7', marginTop: 10 }}>Cargando curva...</Text>
-            </View>
-          )}
-
-          <View style={styles.sliderContainer}>
-            <Text style={styles.sliderLabel}>
-              Franja de uso: <Text style={styles.hourValue}>{selectedHour.toString().padStart(2, '0')}:00h</Text> a{' '}
-              <Text style={styles.hourValue}>{endHour.toString().padStart(2, '0')}:00h</Text>
-            </Text>
-
-            {isPastHour && (
-              <Text style={styles.pastWarning}>⏳ Estás simulando una hora del pasado.</Text>
+            {devices.length === 0 ? (
+              <View style={{ height: 180, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }}>
+                <Text style={{ fontSize: 36, marginBottom: 10 }}>🔌</Text>
+                <Text style={{ color: '#7f8c8d', textAlign: 'center', fontSize: 15, fontWeight: '500', fontStyle: 'italic' }}>
+                  Crea un electrodoméstico en tu perfil para calcular la curva de precios.
+                </Text>
+              </View>
+            ) : simulacion ? (
+              <LineChart
+                data={{ labels: chartLabels, datasets: [{ data: chartData }] }}
+                width={screenWidth - 64}
+                height={180}
+                yAxisLabel="€"
+                yAxisSuffix=""
+                withInnerLines={false}
+                chartConfig={{
+                  backgroundColor: '#ffffff',
+                  backgroundGradientFrom: '#ffffff',
+                  backgroundGradientTo: '#ffffff',
+                  decimalPlaces: 4,
+                  color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+                  style: { borderRadius: 16 },
+                  propsForDots: { r: '3', strokeWidth: '2', stroke: '#3498db' },
+                }}
+                bezier
+                style={styles.chart}
+              />
+            ) : (
+              <View style={{ height: 180, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator color="#3498db" />
+                <Text style={{ color: '#bdc3c7', marginTop: 10 }}>Cargando curva...</Text>
+              </View>
             )}
 
-            <View style={styles.multiSliderWrapper}>
-              <MultiSlider
-                values={[selectedHour, endHour]}
-                sliderLength={screenWidth - 84}
-                onValuesChange={(values) => {
-                  setSelectedHour(values[0]);
-                  setEditedDuracion((values[1] - values[0]).toString());
-                }}
-                min={0}
-                max={24}
-                step={1}
-                allowOverlap={false}
-                snapped={true}
-                minMarkerOverlapDistance={1}
-                selectedStyle={{ backgroundColor: '#3498db', height: 5 }}
-                unselectedStyle={{ backgroundColor: '#ecf0f1', height: 5 }}
-                markerStyle={{
-                  backgroundColor: '#fff',
-                  height: 24,
-                  width: 24,
-                  borderRadius: 12,
-                  borderWidth: 2,
-                  borderColor: '#3498db',
-                  elevation: 3,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.2,
-                  shadowRadius: 2,
-                }}
-              />
-            </View>
+            <View style={styles.sliderContainer}>
+              <Text style={styles.sliderLabel}>
+                Franja de uso: <Text style={styles.hourValue}>{selectedHour.toString().padStart(2, '0')}:00h</Text> a{' '}
+                <Text style={styles.hourValue}>{endHour.toString().padStart(2, '0')}:00h</Text>
+              </Text>
 
-            <View style={styles.sliderTicks}>
-              <Text style={styles.tickText}>00h</Text>
-              <Text style={styles.tickText}>06h</Text>
-              <Text style={styles.tickText}>12h</Text>
-              <Text style={styles.tickText}>18h</Text>
-              <Text style={styles.tickText}>24h</Text>
+              {isPastHour && (
+                <Text style={styles.pastWarning}>⏳ Estás simulando una hora del pasado.</Text>
+              )}
+
+              <View style={styles.multiSliderWrapper}>
+                <MultiSlider
+                  values={[selectedHour, endHour]}
+                  sliderLength={screenWidth - 84}
+                  onValuesChange={(values) => {
+                    setSelectedHour(values[0]);
+                    setEditedDuracion((values[1] - values[0]).toString());
+                  }}
+                  min={0}
+                  max={24}
+                  step={1}
+                  allowOverlap={false}
+                  snapped={true}
+                  minMarkerOverlapDistance={1}
+                  selectedStyle={{ backgroundColor: '#3498db', height: 5 }}
+                  unselectedStyle={{ backgroundColor: '#ecf0f1', height: 5 }}
+                  markerStyle={{
+                    backgroundColor: '#fff',
+                    height: 24,
+                    width: 24,
+                    borderRadius: 12,
+                    borderWidth: 2,
+                    borderColor: '#3498db',
+                    elevation: 3,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 2,
+                  }}
+                />
+              </View>
+
+              <View style={styles.sliderTicks}>
+                <Text style={styles.tickText}>00h</Text>
+                <Text style={styles.tickText}>06h</Text>
+                <Text style={styles.tickText}>12h</Text>
+                <Text style={styles.tickText}>18h</Text>
+                <Text style={styles.tickText}>24h</Text>
+              </View>
             </View>
           </View>
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>3. Ajustes y Confirmación</Text>
-          <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>3. Ajustes y Confirmación</Text>
+            <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
 
-          {simulacion && (
-            <View style={styles.detailsContainer}>
-              <View style={styles.editRow}>
-                <View style={styles.editInputGroup}>
-                  <Text style={styles.editLabel}>Potencia (kW)</Text>
-                  <TextInput
-                    style={[styles.editInput, excedePotencia && { borderColor: 'red', color: 'red' }]}
-                    keyboardType="numeric"
-                    value={editedPotencia}
-                    onChangeText={setEditedPotencia}
-                  />
-                  {excedePotencia && (
-                    <Text style={{ color: 'red', fontSize: 10, marginTop: 4, textAlign: 'center' }}>
-                      Máximo {MAX_POTENCIA} kW
-                    </Text>
-                  )}
+            {simulacion && (
+              <View style={styles.detailsContainer}>
+                <View style={styles.editRow}>
+                  <View style={styles.editInputGroup}>
+                    <Text style={styles.editLabel}>Potencia (kW)</Text>
+                    <TextInput
+                      style={[styles.editInput, excedePotencia && { borderColor: 'red', color: 'red' }]}
+                      keyboardType="numeric"
+                      value={editedPotencia}
+                      onChangeText={setEditedPotencia}
+                    />
+                    {excedePotencia && (
+                      <Text style={{ color: 'red', fontSize: 10, marginTop: 4, textAlign: 'center' }}>
+                        Máximo {MAX_POTENCIA} kW
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.editInputGroup}>
+                    <Text style={styles.editLabel}>Duración (h)</Text>
+                    <TextInput
+                      style={[styles.editInput, { backgroundColor: '#f1f2f6', color: '#95a5a6' }]}
+                      editable={false}
+                      value={editedDuracion}
+                    />
+                  </View>
                 </View>
 
-                <View style={styles.editInputGroup}>
-                  <Text style={styles.editLabel}>Duración (h)</Text>
-                  <TextInput
-                    style={[styles.editInput, { backgroundColor: '#f1f2f6', color: '#95a5a6' }]}
-                    editable={false}
-                    value={editedDuracion}
-                  />
-                </View>
+                {simulacion.recomendacion && (
+                  <View
+                    style={[
+                      styles.alertBox,
+                      esCara ? styles.alertRed : esBarata ? styles.alertGreen : styles.alertYellow,
+                    ]}
+                  >
+                    {esBarata && (
+                      <>
+                        <Text style={styles.alertTitle}>✅ Estás en una hora barata</Text>
+                        <Text style={styles.alertSub}>Buen momento para usar este electrodoméstico.</Text>
+                      </>
+                    )}
+
+                    {esIntermedia && (
+                      <>
+                        <Text style={styles.alertTitle}>🟡 Estás en una hora intermedia</Text>
+                        {diferenciaVsBarata > 0.001 ? (
+                          <Text style={styles.alertSub}>
+                            Comparado con la media de las horas más baratas, podrías pagar aproximadamente{' '}
+                            <Text style={{ fontWeight: 'bold' }}>{diferenciaVsBarata.toFixed(3)} € menos</Text> si lo
+                            mueves.
+                          </Text>
+                        ) : (
+                          <Text style={styles.alertSub}>
+                            Hay franjas algo mejores, pero esta hora tampoco es mala.
+                          </Text>
+                        )}
+
+                        {horaBarataReferencia !== undefined && horaBarataReferencia !== null && (
+                          <Text style={styles.alertSub}>
+                            💡 Prueba una franja barata alrededor de las{' '}
+                            {String(horaBarataReferencia).padStart(2, '0')}:00h.
+                          </Text>
+                        )}
+                      </>
+                    )}
+
+                    {esCara && (
+                      <>
+                        <Text style={styles.alertTitle}>🔴 Estás en una hora cara</Text>
+                        {diferenciaVsBarata > 0.001 ? (
+                          <Text style={styles.alertSub}>
+                            Comparado con la media de las horas más baratas, podrías pagar aproximadamente{' '}
+                            <Text style={{ fontWeight: 'bold' }}>{diferenciaVsBarata.toFixed(3)} € menos</Text> si lo
+                            mueves a una franja barata.
+                          </Text>
+                        ) : (
+                          <Text style={styles.alertSub}>
+                            Te conviene moverlo a una franja barata del día.
+                          </Text>
+                        )}
+                      </>
+                    )}
+
+                    {simulacion.recomendacion.avisoManana && (
+                      <Text style={styles.alertWait}>⏳ {simulacion.recomendacion.avisoManana}</Text>
+                    )}
+                  </View>
+                )}
               </View>
-
-              {simulacion.recomendacion && (
-                <View
-                  style={[
-                    styles.alertBox,
-                    esCara ? styles.alertRed : esBarata ? styles.alertGreen : styles.alertYellow,
-                  ]}
-                >
-                  {esBarata && (
-                    <>
-                      <Text style={styles.alertTitle}>✅ Estás en una hora barata</Text>
-                      <Text style={styles.alertSub}>Buen momento para usar este electrodoméstico.</Text>
-                    </>
-                  )}
-
-                  {esIntermedia && (
-                    <>
-                      <Text style={styles.alertTitle}>🟡 Estás en una hora intermedia</Text>
-                      {diferenciaVsBarata > 0.001 ? (
-                        <Text style={styles.alertSub}>
-                          Comparado con la media de las horas más baratas, podrías pagar aproximadamente{' '}
-                          <Text style={{ fontWeight: 'bold' }}>{diferenciaVsBarata.toFixed(3)} € menos</Text> si lo
-                          mueves.
-                        </Text>
-                      ) : (
-                        <Text style={styles.alertSub}>
-                          Hay franjas algo mejores, pero esta hora tampoco es mala.
-                        </Text>
-                      )}
-
-                      {horaBarataReferencia !== undefined && horaBarataReferencia !== null && (
-                        <Text style={styles.alertSub}>
-                          💡 Prueba una franja barata alrededor de las{' '}
-                          {String(horaBarataReferencia).padStart(2, '0')}:00h.
-                        </Text>
-                      )}
-                    </>
-                  )}
-
-                  {esCara && (
-                    <>
-                      <Text style={styles.alertTitle}>🔴 Estás en una hora cara</Text>
-                      {diferenciaVsBarata > 0.001 ? (
-                        <Text style={styles.alertSub}>
-                          Comparado con la media de las horas más baratas, podrías pagar aproximadamente{' '}
-                          <Text style={{ fontWeight: 'bold' }}>{diferenciaVsBarata.toFixed(3)} € menos</Text> si lo
-                          mueves a una franja barata.
-                        </Text>
-                      ) : (
-                        <Text style={styles.alertSub}>
-                          Te conviene moverlo a una franja barata del día.
-                        </Text>
-                      )}
-                    </>
-                  )}
-
-                  {simulacion.recomendacion.avisoManana && (
-                    <Text style={styles.alertWait}>⏳ {simulacion.recomendacion.avisoManana}</Text>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-
-          <TouchableOpacity 
-            style={[
-              styles.button, 
-              (devices.length === 0 || excedePotencia) && { backgroundColor: '#bdc3c7' }
-            ]} 
-            onPress={handleProgramar} 
-            disabled={saving || devices.length === 0 || excedePotencia}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>AÑADIR A MI PROGRAMACIÓN</Text>
             )}
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Usos Programados para Hoy</Text>
-          {programaciones.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No has programado nada aún. Añade tu primer electrodoméstico arriba.
-            </Text>
-          ) : (
-            programaciones.map((prog) => (
-              <View key={prog.id} style={styles.progItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.progName}>
-                    {prog.nombre}{' '}
-                    <Text style={{ fontWeight: 'normal', fontSize: 12 }}>({prog.potencia} kW)</Text>
-                  </Text>
-                  <Text style={styles.progTime}>
-                    🕒 {prog.horaInicio}:00h - {prog.duracion}h {'  |  '}
-                    <Text style={{ fontWeight: 'bold', color: '#e74c3c' }}>{prog.coste} €</Text>
-                  </Text>
+            <TouchableOpacity 
+              style={[
+                styles.button, 
+                (devices.length === 0 || excedePotencia) && { backgroundColor: '#bdc3c7' }
+              ]} 
+              onPress={handleProgramar} 
+              disabled={saving || devices.length === 0 || excedePotencia}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>AÑADIR A MI PROGRAMACIÓN</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Usos Programados para Hoy</Text>
+            {programaciones.length === 0 ? (
+              <Text style={styles.emptyText}>
+                No has programado nada aún. Añade tu primer electrodoméstico arriba.
+              </Text>
+            ) : (
+              programaciones.map((prog) => (
+                <View key={prog.id} style={styles.progItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.progName}>
+                      {prog.nombre}{' '}
+                      <Text style={{ fontWeight: 'normal', fontSize: 12 }}>({prog.potencia} kW)</Text>
+                    </Text>
+                    <Text style={styles.progTime}>
+                      🕒 {prog.horaInicio}:00h - {prog.duracion}h {'  |  '}
+                      <Text style={{ fontWeight: 'bold', color: '#e74c3c' }}>{prog.coste} €</Text>
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={styles.deleteBtn} onPress={() => eliminarProgramacion(prog.id)}>
+                    <Text style={{ fontSize: 20 }}>🗑️</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => eliminarProgramacion(prog.id)}>
-                  <Text style={{ fontSize: 20 }}>🗑️</Text>
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
-        </View>
+              ))
+            )}
+          </View>
 
-        <View style={{ height: 30 }} />
-      </ScrollView>
+          <View style={{ height: 30 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
-  scrollContainer: { padding: 16 },
+  scrollContainer: { padding: 16, flexGrow: 1 }, // NUEVO: flexGrow: 1 para el teclado
   pageTitle: {
     fontSize: 24,
     fontWeight: 'bold',

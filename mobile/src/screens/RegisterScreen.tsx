@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Alert, 
+  ActivityIndicator, 
+  KeyboardAvoidingView, 
+  ScrollView, 
+  Platform 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../api/client';
 
@@ -18,7 +29,8 @@ export default function RegisterScreen({ navigation }: any) {
     try {
       await apiClient.post('/auth/register', { email, password });
       Alert.alert('¡Éxito!', 'Cuenta creada. Ahora puedes iniciar sesión.', [
-        { text: 'Ir al Login', onPress: () => navigation.navigate('Login') }
+        // Usamos replace para que no pueda volver atrás al registro tras ir al login
+        { text: 'Ir al Login', onPress: () => navigation.replace('Login') }
       ]);
     } catch (error) {
       Alert.alert('Error', 'No se pudo crear la cuenta. ¿Quizás el email ya existe?');
@@ -29,34 +41,63 @@ export default function RegisterScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Únete a EcoWatt 🌱</Text>
-        <Text style={styles.subtitle}>Empieza a ahorrar energía hoy mismo</Text>
-        
-        <View style={styles.form}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+      {/* Añadido KeyboardAvoidingView para gestionar el teclado */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        style={{ flex: 1 }}
+      >
+        {/* Añadido ScrollView para permitir scroll si la pantalla es pequeña */}
+        <ScrollView 
+          contentContainerStyle={styles.content} 
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.title}>Únete a EcoWatt 🌱</Text>
+          <Text style={styles.subtitle}>Empieza a ahorrar energía hoy mismo</Text>
           
-          <Text style={styles.label}>Contraseña</Text>
-          <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
+          <View style={styles.form}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput 
+              style={styles.input} 
+              value={email} 
+              onChangeText={setEmail} 
+              keyboardType="email-address" 
+              autoCapitalize="none" 
+            />
+            
+            <Text style={styles.label}>Contraseña</Text>
+            <TextInput 
+              style={styles.input} 
+              value={password} 
+              onChangeText={setPassword} 
+              secureTextEntry 
+            />
 
-          <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Crear Cuenta</Text>}
-          </TouchableOpacity>
-        </View>
-      </View>
+            <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Crear Cuenta</Text>}
+            </TouchableOpacity>
+
+            {/* Enlace para volver al login de forma explícita */}
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
+              <Text style={styles.backLinkText}>¿Ya tienes cuenta? Volver al Login</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  content: { flex: 1, padding: 24, justifyContent: 'center' },
+  // Cambiamos flex: 1 por flexGrow: 1 para que el ScrollView funcione correctamente
+  content: { flexGrow: 1, padding: 24, justifyContent: 'center' },
   title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50', marginBottom: 8 },
   subtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 32 },
   form: { width: '100%' },
   label: { fontSize: 14, fontWeight: '600', color: '#34495e', marginBottom: 8 },
   input: { backgroundColor: '#f8f9fa', borderWidth: 1, borderColor: '#e9ecef', borderRadius: 10, padding: 14, marginBottom: 20 },
   button: { backgroundColor: '#27ae60', padding: 16, borderRadius: 12, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  backLink: { marginTop: 20, alignItems: 'center', padding: 10 },
+  backLinkText: { color: '#3498db', fontWeight: 'bold', fontSize: 14 },
 });

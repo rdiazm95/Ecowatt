@@ -7,12 +7,15 @@ import {
   Dimensions,
   ScrollView,
   TouchableOpacity,
+  BackHandler,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { fetchTodayDashboard, TodayDashboard } from '../api/dashboard';
+import { logout } from '../api/auth';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -31,7 +34,6 @@ const App = () => {
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today');
   const [viewMode, setViewMode] = useState<'chart' | 'hours'>('chart');
 
-  // SOLUCIÓN: useFocusEffect recarga los datos silenciosamente al entrar a la pestaña
   useFocusEffect(
     useCallback(() => {
       const load = async () => {
@@ -50,7 +52,36 @@ const App = () => {
     }, [])
   );
 
-  // Solo mostramos el spinner a pantalla completa si es la PRIMERA vez que carga
+  // NUEVO: Solución para BackHandler en versiones modernas de React Native
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        Alert.alert(
+          'Cerrar sesión',
+          '¿Estás seguro de que quieres volver a la pantalla de inicio y cerrar sesión?',
+          [
+            { text: 'Cancelar', style: 'cancel', onPress: () => {} },
+            { 
+              text: 'Sí, salir', 
+              style: 'destructive',
+              onPress: async () => {
+                await logout(); 
+                navigation.replace('Welcome'); 
+              } 
+            }
+          ]
+        );
+        return true; 
+      };
+
+      // Guardamos la suscripción
+      const backHandlerSubscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      
+      // Y usamos .remove() en lugar de removeEventListener
+      return () => backHandlerSubscription.remove();
+    }, [navigation])
+  );
+
   if (loading && !data) {
     return (
       <SafeAreaView style={styles.center}>
@@ -71,7 +102,6 @@ const App = () => {
   const now = new Date();
   const currentHour = now.getHours();
 
-  // Protección para que no falle al hacer transiciones si no hay datos
   if (!data) return null;
 
   const todayData = data.today;
@@ -121,7 +151,6 @@ const App = () => {
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
 
-        {/* ── Header profesional: fecha + badge ── */}
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.headerDate}>
@@ -146,7 +175,6 @@ const App = () => {
           </View>
         </View>
 
-        {/* ── Selector Hoy / Mañana ── */}
         <View style={styles.segmentWrapper}>
           <View style={styles.segment}>
             <TouchableOpacity
@@ -233,7 +261,6 @@ const App = () => {
         </View>
 
         <View style={styles.card}>
-          {/* ── Cabecera: título + selector vista + botón histórico ── */}
           <View style={styles.headerRow}>
             <Text style={styles.sectionTitle}>
               {showingTomorrow ? 'Precios de mañana' : 'Precios de hoy'}
@@ -276,7 +303,6 @@ const App = () => {
                 </TouchableOpacity>
               </View>
 
-              {/* ── Botón Histórico ── */}
               <TouchableOpacity
                 style={styles.historyBtn}
                 onPress={() => navigation.navigate('History')}
@@ -385,7 +411,6 @@ const styles = StyleSheet.create({
   scrollContainer: { padding: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
 
-  // ── Header profesional ──
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -396,7 +421,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#2c3e50',
-    textTransform: 'capitalize', // "lunes" → "Lunes"
+    textTransform: 'capitalize',
   },
   headerSub: {
     fontSize: 13,

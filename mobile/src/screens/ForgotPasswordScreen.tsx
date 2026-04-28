@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { forgotPassword, resetPassword } from '../api/auth';
@@ -63,7 +64,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
     try {
       await resetPassword(email, code, newPassword);
       Alert.alert('¡Éxito!', 'Contraseña actualizada. Ya puedes iniciar sesión.');
-      navigation.navigate('Login');
+      navigation.replace('Login'); // Usamos replace para no dejar esta pantalla en el historial
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.message || 'Código incorrecto o caducado');
     } finally {
@@ -74,82 +75,87 @@ export default function ForgotPasswordScreen({ navigation }: any) {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.content}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Volver</Text>
-        </TouchableOpacity>
+        <ScrollView 
+          contentContainerStyle={styles.content} 
+          keyboardShouldPersistTaps="handled"
+        >
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Text style={styles.backText}>← Volver</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.title}>Recuperar Contraseña</Text>
+          <Text style={styles.title}>Recuperar Contraseña</Text>
 
-        {step === 1 ? (
-          <View>
-            <Text style={styles.subtitle}>
-              Introduce tu email y te enviaremos un código de 6 dígitos.
-            </Text>
+          {step === 1 ? (
+            <View>
+              <Text style={styles.subtitle}>
+                Introduce tu email y te enviaremos un código de 6 dígitos.
+              </Text>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="#95a5a6"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor="#95a5a6"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
 
-            <TouchableOpacity style={styles.button} onPress={handleRequestCode} disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>ENVIAR CÓDIGO</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View>
-            <Text style={styles.subtitle}>
-              Introduce el código enviado a {email} y tu nueva contraseña.
-            </Text>
+              <TouchableOpacity style={styles.button} onPress={handleRequestCode} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>ENVIAR CÓDIGO</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View>
+              <Text style={styles.subtitle}>
+                Introduce el código enviado a {email} y tu nueva contraseña.
+              </Text>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Código de 6 dígitos"
-              placeholderTextColor="#95a5a6"
-              value={code}
-              onChangeText={setCode}
-              keyboardType="number-pad"
-              maxLength={6}
-            />
+              <TextInput
+                style={styles.input}
+                placeholder="Código de 6 dígitos"
+                placeholderTextColor="#95a5a6"
+                value={code}
+                onChangeText={setCode}
+                keyboardType="number-pad"
+                maxLength={6}
+              />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Nueva Contraseña"
-              placeholderTextColor="#95a5a6"
-              value={newPassword}
-              onChangeText={setNewPassword}
-              secureTextEntry
-            />
+              <TextInput
+                style={styles.input}
+                placeholder="Nueva Contraseña"
+                placeholderTextColor="#95a5a6"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+              />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Confirmar Nueva Contraseña"
-              placeholderTextColor="#95a5a6"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-            />
+              <TextInput
+                style={styles.input}
+                placeholder="Confirmar Nueva Contraseña"
+                placeholderTextColor="#95a5a6"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+              />
 
-            <TouchableOpacity style={styles.button} onPress={handleResetPassword} disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>ACTUALIZAR CONTRASEÑA</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
+              <TouchableOpacity style={styles.button} onPress={handleResetPassword} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>ACTUALIZAR CONTRASEÑA</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -157,8 +163,8 @@ export default function ForgotPasswordScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 30, flex: 1, justifyContent: 'center' },
-  backBtn: { position: 'absolute', top: 20, left: 20 },
+  content: { padding: 30, flexGrow: 1, justifyContent: 'center' }, // Cambiado a flexGrow: 1
+  backBtn: { position: 'absolute', top: 20, left: 20, zIndex: 10 }, // Añadido zIndex para asegurar que el botón sea clickeable
   backText: { color: '#3498db', fontWeight: '600' },
   title: {
     fontSize: 28,

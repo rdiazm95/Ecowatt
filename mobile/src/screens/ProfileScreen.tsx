@@ -9,12 +9,13 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { apiClient } from '../api/client';
 import { updateAlertSettings, logout } from '../api/auth';
-
 
 const MAX_POTENCIA = 999.99; 
 
@@ -190,173 +191,181 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-
-        <View style={styles.header}>
-          <View style={styles.avatarMock}>
-            <Text style={styles.avatarText}>{iniciales}</Text>
-          </View>
-          <Text style={styles.userName}>{user?.email.split('@')[0]}</Text>
-          <Text style={styles.userEmail}>{user?.email}</Text>
-
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Cerrar Sesión</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Alertas de Precio de la Energía</Text>
-          <Text style={styles.description}>
-            Recibe una notificación cuando el precio de la luz baje del umbral establecido.
-          </Text>
-
-          <View style={styles.row}>
-            <Text style={styles.label}>Activar Notificaciones Automáticas</Text>
-            <Switch
-              value={alertasActivas}
-              onValueChange={setAlertasActivas}
-              trackColor={{ false: '#bdc3c7', true: '#3498db' }}
-              thumbColor={'#fff'}
-            />
-          </View>
-
-          {alertasActivas && (
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Umbral de Precio (€/kWh)</Text>
-              <View style={styles.stepperContainer}>
-                <TouchableOpacity
-                  style={styles.stepperButton}
-                  onPress={() => setUmbralPrecio((prev) => (parseFloat(prev) - 0.01).toFixed(2))}
-                >
-                  <Text style={styles.stepperButtonText}>-</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={styles.stepperInput}
-                  value={umbralPrecio}
-                  onChangeText={setUmbralPrecio}
-                  keyboardType="numeric"
-                />
-                <TouchableOpacity
-                  style={styles.stepperButton}
-                  onPress={() => setUmbralPrecio((prev) => (parseFloat(prev) + 0.01).toFixed(2))}
-                >
-                  <Text style={styles.stepperButtonText}>+</Text>
-                </TouchableOpacity>
-              </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.header}>
+            <View style={styles.avatarMock}>
+              <Text style={styles.avatarText}>{iniciales}</Text>
             </View>
-          )}
+            <Text style={styles.userName}>{user?.email.split('@')[0]}</Text>
+            <Text style={styles.userEmail}>{user?.email}</Text>
 
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleSaveAlert}
-            disabled={isSavingAlert}
-          >
-            {isSavingAlert ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>GUARDAR CONFIGURACIÓN</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>Mis Electrodomésticos</Text>
-            <TouchableOpacity onPress={() => setMostrarFormulario(!mostrarFormulario)}>
-              <Text style={styles.linkText}>{mostrarFormulario ? 'Cancelar' : '+ Añadir Nuevo'}</Text>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+              <Text style={styles.logoutText}>Cerrar Sesión</Text>
             </TouchableOpacity>
           </View>
 
-          {mostrarFormulario && (
-            <View style={styles.formContainer}>
-              <Text style={styles.label}>Nombre del Electrodoméstico</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Ej: Lavavajillas Sótano"
-                value={nuevoDispositivo.nombre}
-                onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, nombre: t})}
-              />
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Alertas de Precio de la Energía</Text>
+            <Text style={styles.description}>
+              Recibe una notificación cuando el precio de la luz baje del umbral establecido.
+            </Text>
 
-              <Text style={styles.label}>Tipo de Electrodoméstico</Text>
-              <View style={styles.iconGrid}>
-                {TIPOS_ELECTRODOMESTICOS.map((item) => (
+            <View style={styles.row}>
+              <Text style={styles.label}>Activar Notificaciones Automáticas</Text>
+              <Switch
+                value={alertasActivas}
+                onValueChange={setAlertasActivas}
+                trackColor={{ false: '#bdc3c7', true: '#3498db' }}
+                thumbColor={'#fff'}
+              />
+            </View>
+
+            {alertasActivas && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Umbral de Precio (€/kWh)</Text>
+                <View style={styles.stepperContainer}>
                   <TouchableOpacity
-                    key={item.id}
-                    style={[
-                      styles.iconButton,
-                      nuevoDispositivo.tipo === item.id && styles.iconButtonActive
-                    ]}
-                    onPress={() => setNuevoDispositivo({...nuevoDispositivo, tipo: item.id})}
+                    style={styles.stepperButton}
+                    onPress={() => setUmbralPrecio((prev) => (parseFloat(prev) - 0.01).toFixed(2))}
                   >
-                    <Text style={styles.iconText}>{item.icon}</Text>
+                    <Text style={styles.stepperButtonText}>-</Text>
                   </TouchableOpacity>
-                ))}
+                  <TextInput
+                    style={styles.stepperInput}
+                    value={umbralPrecio}
+                    onChangeText={setUmbralPrecio}
+                    keyboardType="numeric"
+                  />
+                  <TouchableOpacity
+                    style={styles.stepperButton}
+                    onPress={() => setUmbralPrecio((prev) => (parseFloat(prev) + 0.01).toFixed(2))}
+                  >
+                    <Text style={styles.stepperButtonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
+            )}
 
-              <Text style={styles.label}>Potencia Máxima (kW)</Text>
-              <TextInput
-                // Borde rojo si excede la potencia permitida
-                style={[styles.textInput, excedePotencia && { borderColor: 'red' }]}
-                placeholder="Ej: 2.5"
-                keyboardType="numeric"
-                value={nuevoDispositivo.potencia}
-                onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
-              />
-              
-              {/* Mensaje de error en tiempo real */}
-              {excedePotencia && (
-                <Text style={{ color: 'red', fontSize: 12, marginTop: 4 }}>
-                  Solo puedes introducir una potencia de hasta {MAX_POTENCIA} kW.
-                </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleSaveAlert}
+              disabled={isSavingAlert}
+            >
+              {isSavingAlert ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>GUARDAR CONFIGURACIÓN</Text>
               )}
+            </TouchableOpacity>
+          </View>
 
-              <TouchableOpacity 
-                // Botón gris si hay error
-                style={[styles.primaryButton, excedePotencia && { backgroundColor: '#bdc3c7' }]} 
-                onPress={handleAddDevice} 
-                disabled={adding || excedePotencia} // Bloqueamos el botón si excede el límite
-              >
-                {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
+          <View style={styles.card}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.sectionTitle}>Mis Electrodomésticos</Text>
+              <TouchableOpacity onPress={() => setMostrarFormulario(!mostrarFormulario)}>
+                <Text style={styles.linkText}>{mostrarFormulario ? 'Cancelar' : '+ Añadir Nuevo'}</Text>
               </TouchableOpacity>
             </View>
-          )}
 
-          {!mostrarFormulario && (
-            <View style={styles.deviceListContainer}>
-              {devices.length === 0 ? (
-                <Text style={styles.emptyText}>No tienes electrodomésticos guardados.</Text>
-              ) : (
-                devices.map((device) => {
-                  const iconObj = TIPOS_ELECTRODOMESTICOS.find(t => t.id === device.tipo);
-                  const icon = iconObj ? iconObj.icon : '⚡';
+            {mostrarFormulario && (
+              <View style={styles.formContainer}>
+                <Text style={styles.label}>Nombre del Electrodoméstico</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Ej: Lavavajillas Sótano"
+                  value={nuevoDispositivo.nombre}
+                  onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, nombre: t})}
+                />
 
-                  return (
-                    <View key={device.id} style={styles.deviceItem}>
-                      <Text style={styles.deviceItemIcon}>{icon}</Text>
-                      <View style={styles.deviceItemInfo}>
-                        <Text style={styles.deviceItemName}>{device.nombre}</Text>
-                        <Text style={styles.deviceItemDetails}>{device.potencia} kW</Text>
+                <Text style={styles.label}>Tipo de Electrodoméstico</Text>
+                <View style={styles.iconGrid}>
+                  {TIPOS_ELECTRODOMESTICOS.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[
+                        styles.iconButton,
+                        nuevoDispositivo.tipo === item.id && styles.iconButtonActive
+                      ]}
+                      onPress={() => setNuevoDispositivo({...nuevoDispositivo, tipo: item.id})}
+                    >
+                      <Text style={styles.iconText}>{item.icon}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.label}>Potencia Máxima (kW)</Text>
+                <TextInput
+                  // Borde rojo si excede la potencia permitida
+                  style={[styles.textInput, excedePotencia && { borderColor: 'red' }]}
+                  placeholder="Ej: 2.5"
+                  keyboardType="numeric"
+                  value={nuevoDispositivo.potencia}
+                  onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
+                />
+                
+                {/* Mensaje de error en tiempo real */}
+                {excedePotencia && (
+                  <Text style={{ color: 'red', fontSize: 12, marginTop: 4 }}>
+                    Solo puedes introducir una potencia de hasta {MAX_POTENCIA} kW.
+                  </Text>
+                )}
+
+                <TouchableOpacity 
+                  // Botón gris si hay error
+                  style={[styles.primaryButton, excedePotencia && { backgroundColor: '#bdc3c7' }]} 
+                  onPress={handleAddDevice} 
+                  disabled={adding || excedePotencia} // Bloqueamos el botón si excede el límite
+                >
+                  {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!mostrarFormulario && (
+              <View style={styles.deviceListContainer}>
+                {devices.length === 0 ? (
+                  <Text style={styles.emptyText}>No tienes electrodomésticos guardados.</Text>
+                ) : (
+                  devices.map((device) => {
+                    const iconObj = TIPOS_ELECTRODOMESTICOS.find(t => t.id === device.tipo);
+                    const icon = iconObj ? iconObj.icon : '⚡';
+
+                    return (
+                      <View key={device.id} style={styles.deviceItem}>
+                        <Text style={styles.deviceItemIcon}>{icon}</Text>
+                        <View style={styles.deviceItemInfo}>
+                          <Text style={styles.deviceItemName}>{device.nombre}</Text>
+                          <Text style={styles.deviceItemDetails}>{device.potencia} kW</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => handleDeleteDevice(device.id)} style={styles.deleteBtn}>
+                          <Text style={styles.deleteIcon}>🗑️</Text>
+                        </TouchableOpacity>
                       </View>
-                      <TouchableOpacity onPress={() => handleDeleteDevice(device.id)} style={styles.deleteBtn}>
-                        <Text style={styles.deleteIcon}>🗑️</Text>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })
-              )}
-            </View>
-          )}
-        </View>
+                    );
+                  })
+                )}
+              </View>
+            )}
+          </View>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
-  scrollContainer: { padding: 16 },
+  scrollContainer: { padding: 16, flexGrow: 1 }, // Cambiado a flexGrow para el teclado
   header: { alignItems: 'center', marginBottom: 24, marginTop: 10 },
   avatarMock: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#3498db', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   avatarText: { color: '#fff', fontSize: 28, fontWeight: 'bold' },

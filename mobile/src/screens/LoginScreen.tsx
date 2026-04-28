@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
+  ScrollView,
   Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,9 +34,9 @@ export default function LoginScreen({ navigation }: any) {
     
     setLoading(false);
 
-    // 4. Si el token se guardó bien, vamos a la app. Si no, mostramos error.
+    // 4. Si el token se guardó bien, usamos replace para no poder volver atrás
     if (success) {
-      navigation.navigate('MainApp');
+      navigation.replace('MainApp');
     } else {
       Alert.alert('Error', 'Credenciales incorrectas o problema de conexión.');
     }
@@ -43,64 +44,69 @@ export default function LoginScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* SOLUCIÓN AL TECLADO: KeyboardAvoidingView envuelve a un ScrollView */}
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.content}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>¡Hola de nuevo! 👋</Text>
-          <Text style={styles.subtitle}>Inicia sesión para gestionar tu energía</Text>
-        </View>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>¡Hola de nuevo! 👋</Text>
+            <Text style={styles.subtitle}>Inicia sesión para gestionar tu energía</Text>
+          </View>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Correo Electrónico</Text>
-          <TextInput 
-            style={styles.input}
-            placeholder="ejemplo@correo.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
+          <View style={styles.form}>
+            <Text style={styles.label}>Correo Electrónico</Text>
+            <TextInput 
+              style={styles.input}
+              placeholder="ejemplo@correo.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+            />
 
-          <Text style={styles.label}>Contraseña</Text>
-          <TextInput 
-            style={styles.input}
-            placeholder="••••••••"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+            <Text style={styles.label}>Contraseña</Text>
+            <TextInput 
+              style={styles.input}
+              placeholder="••••••••"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
 
-          {/* <-- AÑADIDA LA NAVEGACIÓN A FORGOT PASSWORD --> */}
-          <TouchableOpacity 
-            style={styles.forgotPassword}
-            onPress={() => navigation.navigate('ForgotPassword')}
-          >
-            <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.forgotPassword}
+              onPress={() => navigation.navigate('ForgotPassword')}
+            >
+              <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.loginButton} 
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.loginButtonText}>Entrar</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity 
+              style={styles.loginButton} 
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.loginButtonText}>Entrar</Text>
+              )}
+            </TouchableOpacity>
+          </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>¿No tienes cuenta? </Text>
-          {/* <-- AÑADIDA LA NAVEGACIÓN A REGISTRO --> */}
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.registerText}>Regístrate aquí</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>¿No tienes cuenta? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+              <Text style={styles.registerText}>Regístrate aquí</Text>
+            </TouchableOpacity>
+          </View>
 
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -108,7 +114,8 @@ export default function LoginScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
-  content: { flex: 1, padding: 24, justifyContent: 'center' },
+  // NUEVO: flexGrow 1 asegura que el scroll ocupe toda la pantalla y centre el contenido
+  scrollContent: { flexGrow: 1, padding: 24, justifyContent: 'center' }, 
   header: { marginBottom: 40 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50', marginBottom: 8 },
   subtitle: { fontSize: 16, color: '#7f8c8d' },
