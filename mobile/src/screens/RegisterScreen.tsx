@@ -41,15 +41,16 @@ export default function RegisterScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Añadido KeyboardAvoidingView para gestionar el teclado */}
+      {/* MEJORADO para Android: Ajuste de behavior y offset */}
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={{ flex: 1 }}
       >
-        {/* Añadido ScrollView para permitir scroll si la pantalla es pequeña */}
         <ScrollView 
           contentContainerStyle={styles.content} 
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <Text style={styles.title}>Únete a EcoWatt 🌱</Text>
           <Text style={styles.subtitle}>Empieza a ahorrar energía hoy mismo</Text>
@@ -81,6 +82,9 @@ export default function RegisterScreen({ navigation }: any) {
               <Text style={styles.backLinkText}>¿Ya tienes cuenta? Volver al Login</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Espacio extra para asegurar que el scroll pase por encima del teclado */}
+          <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -89,7 +93,6 @@ export default function RegisterScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  // Cambiamos flex: 1 por flexGrow: 1 para que el ScrollView funcione correctamente
   content: { flexGrow: 1, padding: 24, justifyContent: 'center' },
   title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50', marginBottom: 8 },
   subtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 32 },

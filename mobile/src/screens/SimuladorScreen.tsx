@@ -9,8 +9,8 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
-  KeyboardAvoidingView, // NUEVO
-  Platform,           // NUEVO
+  KeyboardAvoidingView, 
+  Platform,           
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -224,15 +224,16 @@ export default function SimuladorScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
-      {/* NUEVO: Envolvemos el ScrollView en un KeyboardAvoidingView */}
+      {/* MEJORADO para Android: Ajuste de behavior y offset */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={{ flex: 1 }}
       >
         <ScrollView 
           contentContainerStyle={styles.scrollContainer} 
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled" // Para que los botones se puedan pulsar aunque el teclado esté abierto
+          keyboardShouldPersistTaps="handled" 
         >
           <Text style={styles.pageTitle}>Programador Diario</Text>
 
@@ -493,7 +494,8 @@ export default function SimuladorScreen() {
             )}
           </View>
 
-          <View style={{ height: 30 }} />
+          {/* MEJORADO: Espacio vacío extra grande al final para que el Scroll pueda subir por encima del teclado */}
+          <View style={{ height: 100 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -502,7 +504,7 @@ export default function SimuladorScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
-  scrollContainer: { padding: 16, flexGrow: 1 }, // NUEVO: flexGrow: 1 para el teclado
+  scrollContainer: { padding: 16, flexGrow: 1 }, 
   pageTitle: {
     fontSize: 24,
     fontWeight: 'bold',

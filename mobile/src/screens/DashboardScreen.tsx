@@ -7,15 +7,15 @@ import {
   Dimensions,
   ScrollView,
   TouchableOpacity,
-  BackHandler,
   Alert,
+  BackHandler,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { fetchTodayDashboard, TodayDashboard } from '../api/dashboard';
-import { logout } from '../api/auth';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -48,38 +48,57 @@ const App = () => {
           setLoading(false);
         }
       };
+
       load();
     }, [])
   );
 
-  // NUEVO: Solución para BackHandler en versiones modernas de React Native
+  const showExitAlert = useCallback(() => {
+    Alert.alert(
+      'Minimizar aplicación',
+      '¿Estás seguro de que quieres minimizar la aplicación?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Salir',
+          style: 'destructive',
+          onPress: () => BackHandler.exitApp(),
+        },
+      ],
+      { cancelable: true }
+    );
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS !== 'android') return undefined;
+
       const onBackPress = () => {
-        Alert.alert(
-          'Cerrar sesión',
-          '¿Estás seguro de que quieres volver a la pantalla de inicio y cerrar sesión?',
-          [
-            { text: 'Cancelar', style: 'cancel', onPress: () => {} },
-            { 
-              text: 'Sí, salir', 
-              style: 'destructive',
-              onPress: async () => {
-                await logout(); 
-                navigation.replace('Welcome'); 
-              } 
-            }
-          ]
-        );
-        return true; 
+        showExitAlert();
+        return true;
       };
 
-      // Guardamos la suscripción
-      const backHandlerSubscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      
-      // Y usamos .remove() en lugar de removeEventListener
-      return () => backHandlerSubscription.remove();
-    }, [navigation])
+      const backSubscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress
+      );
+
+      const unsubscribeBeforeRemove = navigation.addListener(
+        'beforeRemove',
+        (e: any) => {
+          e.preventDefault();
+          showExitAlert();
+        }
+      );
+
+      return () => {
+        backSubscription.remove();
+        unsubscribeBeforeRemove();
+      };
+    }, [navigation, showExitAlert])
   );
 
   if (loading && !data) {
@@ -112,21 +131,23 @@ const App = () => {
 
   const showingTomorrow = selectedDay === 'tomorrow';
 
-  const selectedPrices = showingTomorrow && tomorrowAvailable
-    ? tomorrowData.prices
-    : todayData.prices;
+  const selectedPrices =
+    showingTomorrow && tomorrowAvailable ? tomorrowData.prices : todayData.prices;
 
-  const selectedAvg = showingTomorrow && tomorrowAvailable
-    ? Number(tomorrowData.avg ?? 0)
-    : todayData.avg;
+  const selectedAvg =
+    showingTomorrow && tomorrowAvailable
+      ? Number(tomorrowData.avg ?? 0)
+      : todayData.avg;
 
-  const selectedMin = showingTomorrow && tomorrowAvailable
-    ? Number(tomorrowData.min ?? 0)
-    : todayData.min;
+  const selectedMin =
+    showingTomorrow && tomorrowAvailable
+      ? Number(tomorrowData.min ?? 0)
+      : todayData.min;
 
-  const selectedMax = showingTomorrow && tomorrowAvailable
-    ? Number(tomorrowData.max ?? 0)
-    : todayData.max;
+  const selectedMax =
+    showingTomorrow && tomorrowAvailable
+      ? Number(tomorrowData.max ?? 0)
+      : todayData.max;
 
   const current = data.current;
 
@@ -150,7 +171,6 @@ const App = () => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.headerDate}>
@@ -162,14 +182,20 @@ const App = () => {
             </Text>
             <Text style={styles.headerSub}>Precio de la electricidad</Text>
           </View>
-          <View style={[
-            styles.headerBadge,
-            showingTomorrow ? styles.headerBadgeTomorrow : styles.headerBadgeToday,
-          ]}>
-            <Text style={[
-              styles.headerBadgeText,
-              showingTomorrow ? styles.headerBadgeTextTomorrow : styles.headerBadgeTextToday,
-            ]}>
+          <View
+            style={[
+              styles.headerBadge,
+              showingTomorrow ? styles.headerBadgeTomorrow : styles.headerBadgeToday,
+            ]}
+          >
+            <Text
+              style={[
+                styles.headerBadgeText,
+                showingTomorrow
+                  ? styles.headerBadgeTextTomorrow
+                  : styles.headerBadgeTextToday,
+              ]}
+            >
               {showingTomorrow ? 'Mañana' : 'Hoy'}
             </Text>
           </View>
@@ -230,7 +256,12 @@ const App = () => {
                 <View
                   style={[
                     styles.semaphore,
-                    { backgroundColor: getPriceLevelColor(current.priceKwh, todayData.avg) },
+                    {
+                      backgroundColor: getPriceLevelColor(
+                        current.priceKwh,
+                        todayData.avg
+                      ),
+                    },
                   ]}
                 />
               </>
@@ -242,9 +273,7 @@ const App = () => {
               <Text style={styles.currentPrice}>
                 {selectedAvg.toFixed(4)} €/kWh
               </Text>
-              <Text style={styles.currentMwh}>
-                Media prevista para mañana
-              </Text>
+              <Text style={styles.currentMwh}>Media prevista para mañana</Text>
               <View
                 style={[
                   styles.semaphore,
@@ -358,7 +387,9 @@ const App = () => {
                       {String((p.hour + 1) % 24).padStart(2, '0')}:00
                     </Text>
                   </View>
-                  <Text style={styles.hourPrice}>{p.priceKwh.toFixed(4)} €/kWh</Text>
+                  <Text style={styles.hourPrice}>
+                    {p.priceKwh.toFixed(4)} €/kWh
+                  </Text>
                 </View>
               ))}
             </View>

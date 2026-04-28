@@ -192,7 +192,8 @@ export default function ProfileScreen({ navigation }: any) {
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} // MEJORADO para Android
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Añade un pequeño margen extra
         style={{ flex: 1 }}
       >
         <ScrollView 
@@ -303,7 +304,6 @@ export default function ProfileScreen({ navigation }: any) {
 
                 <Text style={styles.label}>Potencia Máxima (kW)</Text>
                 <TextInput
-                  // Borde rojo si excede la potencia permitida
                   style={[styles.textInput, excedePotencia && { borderColor: 'red' }]}
                   placeholder="Ej: 2.5"
                   keyboardType="numeric"
@@ -311,7 +311,6 @@ export default function ProfileScreen({ navigation }: any) {
                   onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
                 />
                 
-                {/* Mensaje de error en tiempo real */}
                 {excedePotencia && (
                   <Text style={{ color: 'red', fontSize: 12, marginTop: 4 }}>
                     Solo puedes introducir una potencia de hasta {MAX_POTENCIA} kW.
@@ -319,10 +318,9 @@ export default function ProfileScreen({ navigation }: any) {
                 )}
 
                 <TouchableOpacity 
-                  // Botón gris si hay error
                   style={[styles.primaryButton, excedePotencia && { backgroundColor: '#bdc3c7' }]} 
                   onPress={handleAddDevice} 
-                  disabled={adding || excedePotencia} // Bloqueamos el botón si excede el límite
+                  disabled={adding || excedePotencia}
                 >
                   {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
                 </TouchableOpacity>
@@ -356,7 +354,8 @@ export default function ProfileScreen({ navigation }: any) {
             )}
           </View>
 
-          <View style={{ height: 40 }} />
+          {/* MEJORADO: Espacio vacío extra grande al final para que el Scroll pueda subir por encima del teclado */}
+          <View style={{ height: 100 }} /> 
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -365,7 +364,7 @@ export default function ProfileScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
-  scrollContainer: { padding: 16, flexGrow: 1 }, // Cambiado a flexGrow para el teclado
+  scrollContainer: { padding: 16, flexGrow: 1 }, 
   header: { alignItems: 'center', marginBottom: 24, marginTop: 10 },
   avatarMock: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#3498db', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   avatarText: { color: '#fff', fontSize: 28, fontWeight: 'bold' },

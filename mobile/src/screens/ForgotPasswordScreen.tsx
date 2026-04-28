@@ -74,12 +74,15 @@ export default function ForgotPasswordScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* MEJORADO para Android: Ajuste de behavior y offset */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={{ flex: 1 }}
       >
         <ScrollView 
           contentContainerStyle={styles.content} 
+          showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -155,6 +158,9 @@ export default function ForgotPasswordScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
           )}
+
+          {/* Espacio extra para asegurar que el scroll pase por encima del teclado */}
+          <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

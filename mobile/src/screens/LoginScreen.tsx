@@ -20,23 +20,25 @@ export default function LoginScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    // 1. Validamos que haya escrito algo
     if (!email || !password) {
       Alert.alert('Espera', 'Por favor, rellena todos los campos.');
       return;
     }
 
-    // 2. Activamos el spinner de carga
     setLoading(true);
 
-    // 3. Llamamos a nuestra API (NestJS)
     const success = await loginAndSaveToken(email, password);
     
     setLoading(false);
 
-    // 4. Si el token se guardó bien, usamos replace para no poder volver atrás
     if (success) {
-      navigation.replace('MainApp');
+      // SOLUCIÓN DEFINITIVA: Reseteamos el estado de la navegación.
+      // Esto elimina las pantallas de 'Welcome' y 'Login' del historial.
+      // Al deslizar hacia atrás en el Dashboard, la app se minimizará.
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainApp' }],
+      });
     } else {
       Alert.alert('Error', 'Credenciales incorrectas o problema de conexión.');
     }
@@ -44,9 +46,9 @@ export default function LoginScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* SOLUCIÓN AL TECLADO: KeyboardAvoidingView envuelve a un ScrollView */}
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={{ flex: 1 }}
       >
         <ScrollView 
@@ -106,6 +108,7 @@ export default function LoginScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
+          <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -114,7 +117,6 @@ export default function LoginScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
-  // NUEVO: flexGrow 1 asegura que el scroll ocupe toda la pantalla y centre el contenido
   scrollContent: { flexGrow: 1, padding: 24, justifyContent: 'center' }, 
   header: { marginBottom: 40 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50', marginBottom: 8 },
