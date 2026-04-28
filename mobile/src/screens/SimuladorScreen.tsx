@@ -19,6 +19,9 @@ import { apiClient } from '../api/client';
 
 const screenWidth = Dimensions.get('window').width;
 
+// Límite de potencia máxima
+const MAX_POTENCIA = 15;
+
 export default function SimuladorScreen() {
   const currentRealHour = new Date().getHours();
 
@@ -35,6 +38,10 @@ export default function SimuladorScreen() {
   const [saving, setSaving] = useState(false);
 
   const toNumber = (value: any) => parseFloat(String(value).replace(',', '.')) || 0;
+
+  // Validación en tiempo real de la potencia editada
+  const potenciaIngresada = toNumber(editedPotencia);
+  const excedePotencia = potenciaIngresada > MAX_POTENCIA;
 
   useFocusEffect(
     useCallback(() => {
@@ -91,7 +98,8 @@ export default function SimuladorScreen() {
       const duracionNum = toNumber(dur) || 1;
       const potenciaNum = toNumber(pot) || 0;
 
-      if (potenciaNum === 0) return;
+      // Si la potencia ingresada es mayor al máximo permitido o 0, evitamos la llamada al backend
+      if (potenciaNum === 0 || potenciaNum > MAX_POTENCIA) return;
 
       const resSimulador = await apiClient.post('/simulator/calculate', {
         deviceId: disp.id,
@@ -116,13 +124,18 @@ export default function SimuladorScreen() {
 
   const handleProgramar = async () => {
     if (!selectedDevice || !simulacion) return;
+
+    // Validación antes de guardar
+    if (potenciaIngresada <= 0 || excedePotencia) {
+      Alert.alert('Error', `La potencia debe estar entre 0.1 y ${MAX_POTENCIA} kW.`);
+      return;
+    }
+
     setSaving(true);
 
     try {
-      const potenciaNum = toNumber(editedPotencia);
-
       try {
-        await apiClient.patch(`/devices/${selectedDevice.id}`, { potencia: potenciaNum });
+        await apiClient.patch(`/devices/${selectedDevice.id}`, { potencia: potenciaIngresada });
       } catch (apiError) {
         console.warn('Aviso: Backend no respondió al PATCH. Guardando en memoria local de todos modos.');
       }
@@ -244,7 +257,6 @@ export default function SimuladorScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
 
-          {/* NUEVA LÓGICA: Si no hay electrodomésticos, muestra el mensaje */}
           {devices.length === 0 ? (
             <View style={{ height: 180, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }}>
               <Text style={{ fontSize: 36, marginBottom: 10 }}>🔌</Text>
@@ -342,11 +354,16 @@ export default function SimuladorScreen() {
                 <View style={styles.editInputGroup}>
                   <Text style={styles.editLabel}>Potencia (kW)</Text>
                   <TextInput
-                    style={styles.editInput}
+                    style={[styles.editInput, excedePotencia && { borderColor: 'red', color: 'red' }]}
                     keyboardType="numeric"
                     value={editedPotencia}
                     onChangeText={setEditedPotencia}
                   />
+                  {excedePotencia && (
+                    <Text style={{ color: 'red', fontSize: 10, marginTop: 4, textAlign: 'center' }}>
+                      Máximo {MAX_POTENCIA} kW
+                    </Text>
+                  )}
                 </View>
 
                 <View style={styles.editInputGroup}>
@@ -422,11 +439,13 @@ export default function SimuladorScreen() {
             </View>
           )}
 
-          {/* BOTÓN DESHABILITADO SI NO HAY DISPOSITIVOS */}
           <TouchableOpacity 
-            style={[styles.button, devices.length === 0 && { backgroundColor: '#bdc3c7' }]} 
+            style={[
+              styles.button, 
+              (devices.length === 0 || excedePotencia) && { backgroundColor: '#bdc3c7' }
+            ]} 
             onPress={handleProgramar} 
-            disabled={saving || devices.length === 0}
+            disabled={saving || devices.length === 0 || excedePotencia}
           >
             {saving ? (
               <ActivityIndicator color="#fff" />

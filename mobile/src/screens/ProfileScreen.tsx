@@ -15,6 +15,8 @@ import * as Notifications from 'expo-notifications';
 import { apiClient } from '../api/client';
 import { updateAlertSettings, logout } from '../api/auth';
 
+// Definimos el límite máximo de potencia
+const MAX_POTENCIA = 15; 
 
 const TIPOS_ELECTRODOMESTICOS = [
   { id: 'lavadora', icon: '👕' },
@@ -24,7 +26,6 @@ const TIPOS_ELECTRODOMESTICOS = [
   { id: 'frigorifico', icon: '❄️' },
   { id: 'tv', icon: '📺' },
 ];
-
 
 export default function ProfileScreen({ navigation }: any) {
   const [user, setUser] = useState<any>(null);
@@ -42,6 +43,10 @@ export default function ProfileScreen({ navigation }: any) {
     tipo: 'lavadora',
     potencia: '',
   });
+
+  // Validaciones en tiempo real para la potencia
+  const potenciaIngresada = parseFloat(nuevoDispositivo.potencia.replace(',', '.')) || 0;
+  const excedePotencia = potenciaIngresada > MAX_POTENCIA;
 
   useEffect(() => {
     fetchProfileAndDevices();
@@ -74,7 +79,6 @@ export default function ProfileScreen({ navigation }: any) {
       let pushToken: string | undefined = undefined;
 
       if (alertasActivas) {
-        // Solicitar permisos de notificación
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
 
@@ -92,14 +96,12 @@ export default function ProfileScreen({ navigation }: any) {
           return;
         }
 
-        // Obtener FCM token nativo para Firebase Admin SDK
         try {
           const tokenData = await Notifications.getDevicePushTokenAsync();
           pushToken = tokenData.data;
           console.log('✅ FCM token obtenido:', pushToken);
         } catch (tokenError) {
           console.warn('⚠️ No se pudo obtener FCM token:', tokenError);
-          // Continúa sin token — se guarda la preferencia igualmente
         }
       }
 
@@ -121,12 +123,18 @@ export default function ProfileScreen({ navigation }: any) {
       return;
     }
 
+    // Comprobación de seguridad antes de llamar a la API
+    if (potenciaIngresada <= 0 || excedePotencia) {
+      Alert.alert('Error', `La potencia debe estar entre 0.1 y ${MAX_POTENCIA} kW.`);
+      return;
+    }
+
     setAdding(true);
     try {
       await apiClient.post('/devices', {
         nombre: nuevoDispositivo.nombre,
         tipo: nuevoDispositivo.tipo,
-        potencia: parseFloat(nuevoDispositivo.potencia),
+        potencia: potenciaIngresada, // Enviamos el valor ya formateado y validado
         duracion: 1,
       });
 
@@ -287,14 +295,27 @@ export default function ProfileScreen({ navigation }: any) {
 
               <Text style={styles.label}>Potencia Máxima (kW)</Text>
               <TextInput
-                style={styles.textInput}
+                // Borde rojo si excede la potencia permitida
+                style={[styles.textInput, excedePotencia && { borderColor: 'red' }]}
                 placeholder="Ej: 2.5"
                 keyboardType="numeric"
                 value={nuevoDispositivo.potencia}
                 onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
               />
+              
+              {/* Mensaje de error en tiempo real */}
+              {excedePotencia && (
+                <Text style={{ color: 'red', fontSize: 12, marginTop: 4 }}>
+                  Solo puedes introducir una potencia de hasta {MAX_POTENCIA} kW.
+                </Text>
+              )}
 
-              <TouchableOpacity style={styles.primaryButton} onPress={handleAddDevice} disabled={adding}>
+              <TouchableOpacity 
+                // Botón gris si hay error
+                style={[styles.primaryButton, excedePotencia && { backgroundColor: '#bdc3c7' }]} 
+                onPress={handleAddDevice} 
+                disabled={adding || excedePotencia} // Bloqueamos el botón si excede el límite
+              >
                 {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
               </TouchableOpacity>
             </View>
@@ -332,7 +353,6 @@ export default function ProfileScreen({ navigation }: any) {
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
