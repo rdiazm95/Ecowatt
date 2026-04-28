@@ -20,7 +20,7 @@ import { apiClient } from '../api/client';
 const screenWidth = Dimensions.get('window').width;
 
 // Límite de potencia máxima
-const MAX_POTENCIA = 15;
+const MAX_POTENCIA = 999.99;
 
 export default function SimuladorScreen() {
   const currentRealHour = new Date().getHours();

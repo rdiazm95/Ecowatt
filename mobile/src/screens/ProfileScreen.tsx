@@ -15,8 +15,8 @@ import * as Notifications from 'expo-notifications';
 import { apiClient } from '../api/client';
 import { updateAlertSettings, logout } from '../api/auth';
 
-// Definimos el límite máximo de potencia
-const MAX_POTENCIA = 15; 
+
+const MAX_POTENCIA = 999.99; 
 
 const TIPOS_ELECTRODOMESTICOS = [
   { id: 'lavadora', icon: '👕' },
