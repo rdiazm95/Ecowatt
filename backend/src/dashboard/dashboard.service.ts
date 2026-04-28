@@ -33,10 +33,10 @@ export interface TodayDashboard {
 // Interfaz para el histórico de 30 días
 // ─────────────────────────────────────────
 export interface HistoryDayPoint {
-  date: string;   // "2026-04-27"
-  avg: number;    // precio medio €/kWh
-  min: number;    // precio mínimo €/kWh
-  max: number;    // precio máximo €/kWh
+  date: string; // "2026-04-27"
+  avg: number;  // precio medio €/kWh
+  min: number;  // precio mínimo €/kWh
+  max: number;  // precio máximo €/kWh
 }
 
 @Injectable()
@@ -46,24 +46,25 @@ export class DashboardService {
   async getTodayDashboard(): Promise<TodayDashboard> {
     const todayPrices = await this.pricesService.getTodayPrices();
     const currentPrice = await this.pricesService.getCurrentPrice();
+    const tomorrowPrices = await this.pricesService.getTomorrowPrices();
 
     const pricesToday = todayPrices.map((p) => ({
-      hour: p.datetime.getHours(),
+      hour: p.datetime.getUTCHours(),
       priceKwh: Number(parseFloat(p.valueKwh as any).toFixed(4)),
       priceMwh: Number(parseFloat(p.value as any).toFixed(2)),
     }));
 
     const pricesKwh = pricesToday.map((p) => p.priceKwh);
-    const avg = Number(
-      (pricesKwh.reduce((a, b) => a + b, 0) / pricesKwh.length).toFixed(4),
-    );
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowPrices = await this.pricesService.getPricesByDate(tomorrow);
+    const avg =
+      pricesKwh.length > 0
+        ? Number(
+            (pricesKwh.reduce((a, b) => a + b, 0) / pricesKwh.length).toFixed(4),
+          )
+        : 0;
 
     const pricesTomorrow = tomorrowPrices.map((p) => ({
-      hour: p.datetime.getHours(),
+      hour: p.datetime.getUTCHours(),
       priceKwh: Number(parseFloat(p.valueKwh as any).toFixed(4)),
       priceMwh: Number(parseFloat(p.value as any).toFixed(2)),
     }));
@@ -80,8 +81,8 @@ export class DashboardService {
         : null,
       today: {
         prices: pricesToday,
-        min: Math.min(...pricesKwh),
-        max: Math.max(...pricesKwh),
+        min: pricesKwh.length > 0 ? Math.min(...pricesKwh) : 0,
+        max: pricesKwh.length > 0 ? Math.max(...pricesKwh) : 0,
         avg,
       },
       tomorrow: {

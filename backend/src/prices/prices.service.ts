@@ -5,78 +5,113 @@ import { Cron } from '@nestjs/schedule';
 import { Price } from './entities/price.entity';
 import { EsiosService } from '../esios/esios.service';
 import { UsersService } from '../users/users.service';
-import { NotificationsService } from '../notifications/notifications.service'; // <-- NUEVO IMPORT
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PricesService {
   private readonly logger = new Logger(PricesService.name);
+  private readonly SPAIN_TZ = 'Europe/Madrid';
 
   constructor(
     @InjectRepository(Price)
     private priceRepository: Repository<Price>,
     private esiosService: EsiosService,
     private usersService: UsersService,
-    private notificationsService: NotificationsService, // <-- LO INYECTAMOS AQUÍ
+    private notificationsService: NotificationsService,
   ) {}
 
-  // ─────────────────────────────────────────
-  // HELPER: convierte la hora local española
-  // del string de ESIOS a un Date UTC "neutro"
-  // ─────────────────────────────────────────
   private parseEsiosDatetime(raw: string): Date {
     const localPart = raw.substring(0, 19);
     return new Date(localPart + 'Z');
   }
 
   // ─────────────────────────────────────────
-  // HELPER: hora española actual como UTC neutro
+  // HELPERS ROBUSTOS DE FECHA EN HORA ESPAÑOLA
   // ─────────────────────────────────────────
+  private getSpainDateParts(date: Date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: this.SPAIN_TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+
+    const pick = (type: string) =>
+      Number(parts.find((p) => p.type === type)?.value ?? 0);
+
+    return {
+      year: pick('year'),
+      month: pick('month'),
+      day: pick('day'),
+      hour: pick('hour'),
+      minute: pick('minute'),
+      second: pick('second'),
+    };
+  }
+
+  private buildUtcNeutralDate(
+    year: number,
+    month: number,
+    day: number,
+    hour = 0,
+    minute = 0,
+    second = 0,
+    ms = 0,
+  ): Date {
+    return new Date(Date.UTC(year, month - 1, day, hour, minute, second, ms));
+  }
+
   private getNowSpainAsUtcNeutral(): Date {
-    const now = new Date();
-    const offsetHours = this.getSpainOffsetHours(now);
-    const spainNow = new Date(now.getTime() + offsetHours * 3600 * 1000);
-    spainNow.setMinutes(0, 0, 0);
-    return spainNow;
+    const { year, month, day, hour } = this.getSpainDateParts();
+    return this.buildUtcNeutralDate(year, month, day, hour, 0, 0, 0);
+  }
+
+  private getTodaySpainAsUtcNeutral(): Date {
+    const { year, month, day } = this.getSpainDateParts();
+    return this.buildUtcNeutralDate(year, month, day, 0, 0, 0, 0);
+  }
+
+  private getTomorrowSpainAsUtcNeutral(): Date {
+    const tomorrow = new Date(this.getTodaySpainAsUtcNeutral());
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    return tomorrow;
+  }
+
+  private isTomorrowPublicationWindowOpen(date: Date = new Date()): boolean {
+    const { hour, minute } = this.getSpainDateParts(date);
+    return hour > 20 || (hour === 20 && minute >= 30);
   }
 
   // ─────────────────────────────────────────
-  // HELPER: offset en horas de España (+1 o +2)
+  // CRON: precios de mañana a las 21:00 HORA ESPAÑOLA
   // ─────────────────────────────────────────
-  private getSpainOffsetHours(date: Date): number {
-    const year = date.getUTCFullYear();
-    const lastSundayMarch   = this.lastSundayOfUTC(year, 2);
-    const lastSundayOctober = this.lastSundayOfUTC(year, 9);
-    return date >= lastSundayMarch && date < lastSundayOctober ? 2 : 1;
-  }
-
-  private lastSundayOfUTC(year: number, month: number): Date {
-    const lastDay = new Date(Date.UTC(year, month + 1, 0));
-    const dow = lastDay.getUTCDay();
-    lastDay.setUTCDate(lastDay.getUTCDate() - dow);
-    return lastDay;
-  }
-
-  // ─────────────────────────────────────────
-  // CRON: precios de mañana cada día a las 21:00 UTC
-  // ─────────────────────────────────────────
-  @Cron('0 0 21 * * *')
+  @Cron('0 0 21 * * *', {
+    name: 'fetchTomorrowPrices',
+    timeZone: 'Europe/Madrid',
+    waitForCompletion: true,
+  })
   async fetchTomorrowPrices(): Promise<void> {
     this.logger.log('CRON: Iniciando descarga de precios para mañana...');
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = this.getTomorrowSpainAsUtcNeutral();
     await this.fetchAndSavePrices(tomorrow);
   }
 
   // ─────────────────────────────────────────
-  // CRON: limpieza de precios > 31 días
-  // Se ejecuta cada día a las 00:05 UTC
-  // (01:05 hora española, sin tráfico)
+  // CRON: limpieza a las 00:01 HORA ESPAÑOLA
+  // Conserva 30 días contando el día actual
   // ─────────────────────────────────────────
-  @Cron('0 5 0 * * *')
+  @Cron('0 1 0 * * *', {
+    name: 'cleanOldPrices',
+    timeZone: 'Europe/Madrid',
+    waitForCompletion: true,
+  })
   async cleanOldPrices(): Promise<void> {
-    const cutoff = new Date();
-    cutoff.setUTCDate(cutoff.getUTCDate() - 31);
-    cutoff.setUTCHours(0, 0, 0, 0);
+    const cutoff = new Date(this.getTodaySpainAsUtcNeutral());
+    cutoff.setUTCDate(cutoff.getUTCDate() - 29);
 
     const result = await this.priceRepository.delete({
       datetime: LessThan(cutoff),
@@ -88,17 +123,17 @@ export class PricesService {
   }
 
   // ─────────────────────────────────────────
-  // HISTÓRICO: precio medio/min/max por día
-  // de los últimos 30 días (para la gráfica)
+  // HISTÓRICO 30 DÍAS EN HORA ESPAÑOLA
   // ─────────────────────────────────────────
   async getLast30DaysSummary(): Promise<
     { date: string; avg: number; min: number; max: number }[]
   > {
     const results: { date: string; avg: number; min: number; max: number }[] = [];
+    const todaySpain = this.getTodaySpainAsUtcNeutral();
 
     for (let i = 29; i >= 0; i--) {
-      const day = new Date();
-      day.setUTCDate(day.getUTCDate() - i);
+      const day = new Date(todaySpain);
+      day.setUTCDate(todaySpain.getUTCDate() - i);
       day.setUTCHours(0, 0, 0, 0);
 
       const prices = await this.getPricesByDate(day);
@@ -108,7 +143,7 @@ export class PricesService {
       const avg = Number((kwh.reduce((a, b) => a + b, 0) / kwh.length).toFixed(4));
 
       results.push({
-        date: day.toISOString().substring(0, 10), // "2026-04-27"
+        date: day.toISOString().substring(0, 10),
         avg,
         min: Number(Math.min(...kwh).toFixed(4)),
         max: Number(Math.max(...kwh).toFixed(4)),
@@ -122,7 +157,7 @@ export class PricesService {
   // ARRANQUE
   // ─────────────────────────────────────────
   async onModuleInit(): Promise<void> {
-    const today = new Date();
+    const today = this.getTodaySpainAsUtcNeutral();
     const existingPrices = await this.getPricesByDate(today);
 
     if (existingPrices.length === 0) {
@@ -130,13 +165,12 @@ export class PricesService {
       await this.fetchAndSavePrices(today);
     }
 
-    const now = new Date();
-    if (now.getHours() >= 20 && now.getMinutes() >= 30 || now.getHours() >= 21) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
+    if (this.isTomorrowPublicationWindowOpen()) {
+      const tomorrow = this.getTomorrowSpainAsUtcNeutral();
       const tomorrowPrices = await this.getPricesByDate(tomorrow);
+
       if (tomorrowPrices.length === 0) {
-        this.logger.log('ARRANQUE: Es tarde y no tengo los precios de mañana. Descargando...');
+        this.logger.log('ARRANQUE: Ya debería haber precios de mañana. Intentando descargar...');
         try {
           await this.fetchAndSavePrices(tomorrow);
         } catch (e) {
@@ -174,7 +208,7 @@ export class PricesService {
         }
       }
 
-      this.logger.log(`Guardados ${prices.length} precios para ${date.toDateString()}`);
+      this.logger.log(`Guardados ${prices.length} precios para ${date.toISOString().substring(0, 10)}`);
       return prices;
     } catch (error) {
       if (error instanceof Error) {
@@ -191,10 +225,10 @@ export class PricesService {
   // ─────────────────────────────────────────
   async getPricesByDate(date: Date): Promise<Price[]> {
     const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+    startOfDay.setUTCHours(0, 0, 0, 0);
 
     const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    endOfDay.setUTCHours(23, 59, 59, 999);
 
     let prices = await this.priceRepository.find({
       where: { datetime: Between(startOfDay, endOfDay) },
@@ -202,11 +236,15 @@ export class PricesService {
     });
 
     if (prices.length === 0) {
-      this.logger.log(`No hay datos locales para ${date.toDateString()}. Descargando de ESIOS...`);
+      this.logger.log(
+        `No hay datos locales para ${startOfDay.toISOString().substring(0, 10)}. Descargando de ESIOS...`,
+      );
       try {
-        prices = await this.fetchAndSavePrices(date);
+        prices = await this.fetchAndSavePrices(startOfDay);
       } catch (error) {
-        this.logger.warn(`No se pudieron descargar los precios históricos para ${date.toDateString()}`);
+        this.logger.warn(
+          `No se pudieron descargar los precios históricos para ${startOfDay.toISOString().substring(0, 10)}`,
+        );
       }
     }
 
@@ -224,16 +262,14 @@ export class PricesService {
   }
 
   async getTodayPrices(): Promise<Price[]> {
-    return this.getPricesByDate(new Date());
+    return this.getPricesByDate(this.getTodaySpainAsUtcNeutral());
   }
 
   async getTomorrowPrices(): Promise<Price[]> {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = this.getTomorrowSpainAsUtcNeutral();
     let prices = await this.getPricesByDate(tomorrow);
 
-    const now = new Date();
-    if (prices.length === 0 && (now.getHours() >= 21 || (now.getHours() === 20 && now.getMinutes() >= 30))) {
+    if (prices.length === 0 && this.isTomorrowPublicationWindowOpen()) {
       this.logger.log('RESCATE: Petición de precios de mañana recibida. Intentando descargar al vuelo...');
       try {
         prices = await this.fetchAndSavePrices(tomorrow);
@@ -264,7 +300,6 @@ export class PricesService {
         return;
       }
 
-      // CORRECCIÓN: Convertir a Número explícitamente porque TypeORM lo devuelve como String
       const precioKwh = Number(precioActual.valueKwh);
       this.logger.log(`Precio actual de la red: ${precioKwh.toFixed(5)} €/kWh`);
 
@@ -278,21 +313,20 @@ export class PricesService {
       let alertasEnviadas = 0;
 
       for (const user of usuarios) {
-        // CORRECCIÓN: Asegurarnos de que el objetivo del usuario también se evalúa como Número
         if (user.alertaPrecioObjetivo && precioKwh <= Number(user.alertaPrecioObjetivo)) {
-          
           if (user.expoPushToken) {
-            // AHORA USAMOS TU SERVICIO PROFESIONAL DE FIREBASE
             await this.notificationsService.sendPushNotification(
               user.expoPushToken,
               '¡Luz Barata Detectada! ⚡️',
               `El precio acaba de bajar a ${precioKwh.toFixed(3)} €/kWh. ¡Es el momento perfecto para encender tus electrodomésticos!`,
-              { precioKwh: precioKwh.toString() }
+              { precioKwh: precioKwh.toString() },
             );
-            alertasEnviadas++;
-            this.logger.log(`✅ Alerta enviada a usuario ${user.email} (Objetivo: ${user.alertaPrecioObjetivo})`);
-          }
 
+            alertasEnviadas++;
+            this.logger.log(
+              `✅ Alerta enviada a usuario ${user.email} (Objetivo: ${user.alertaPrecioObjetivo})`,
+            );
+          }
         }
       }
 
