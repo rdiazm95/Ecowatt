@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { DevicesModule } from './devices/devices.module';
 import { SimulatorModule } from './simulator/simulator.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ProgramacionesModule } from './programaciones/programaciones.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     DevicesModule,
     SimulatorModule,
     NotificationsModule,
+    ProgramacionesModule,
   ],
   providers: [EsiosService],
 })
