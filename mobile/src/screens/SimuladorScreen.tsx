@@ -9,20 +9,30 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
-  KeyboardAvoidingView, 
-  Platform,           
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import MultiSlider from '@ptomasroos/react-native-multi-slider';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '../api/client';
+import { getProgramaciones, crearProgramacion, eliminarProgramacion as eliminarProgramacionApi } from '../api/programaciones';
 
 const screenWidth = Dimensions.get('window').width;
 
-// Límite de potencia máxima
 const MAX_POTENCIA = 999.99;
+
+// Normaliza una programación del backend al formato local
+const mapProgFromBackend = (p: any) => ({
+  id: p.id,
+  nombre: p.dispositivo?.nombre ?? '—',
+  potencia: parseFloat(p.potenciaW).toString(),
+  duracion: parseFloat(p.duracionHoras).toString(),
+  horaInicio: p.horaInicio,
+  coste: parseFloat(p.costeEstimado).toFixed(4),
+  kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
+});
 
 export default function SimuladorScreen() {
   const currentRealHour = new Date().getHours();
@@ -41,7 +51,6 @@ export default function SimuladorScreen() {
 
   const toNumber = (value: any) => parseFloat(String(value).replace(',', '.')) || 0;
 
-  // Validación en tiempo real de la potencia editada
   const potenciaIngresada = toNumber(editedPotencia);
   const excedePotencia = potenciaIngresada > MAX_POTENCIA;
 
@@ -64,16 +73,12 @@ export default function SimuladorScreen() {
       });
 
       const hoyStr = new Date().toISOString().split('T')[0];
-      const fechaGuardada = await AsyncStorage.getItem('fecha_programacion');
-      const savedProgs = await AsyncStorage.getItem('programaciones_hoy');
+      const resProg = await getProgramaciones();
+      const progsHoy = resProg.data
+        .filter((p: any) => p.fecha === hoyStr)
+        .map(mapProgFromBackend);
+      setProgramaciones(progsHoy);
 
-      if (fechaGuardada !== hoyStr) {
-        await AsyncStorage.removeItem('programaciones_hoy');
-        await AsyncStorage.setItem('fecha_programacion', hoyStr);
-        setProgramaciones([]);
-      } else if (savedProgs) {
-        setProgramaciones(JSON.parse(savedProgs));
-      }
     } catch (error) {
       console.error('Error cargando datos:', error);
     } finally {
@@ -100,7 +105,6 @@ export default function SimuladorScreen() {
       const duracionNum = toNumber(dur) || 1;
       const potenciaNum = toNumber(pot) || 0;
 
-      // Si la potencia ingresada es mayor al máximo permitido o 0, evitamos la llamada al backend
       if (potenciaNum === 0 || potenciaNum > MAX_POTENCIA) return;
 
       const resSimulador = await apiClient.post('/simulator/calculate', {
@@ -127,7 +131,6 @@ export default function SimuladorScreen() {
   const handleProgramar = async () => {
     if (!selectedDevice || !simulacion) return;
 
-    // Validación antes de guardar
     if (potenciaIngresada <= 0 || excedePotencia) {
       Alert.alert('Error', `La potencia debe estar entre 0.1 y ${MAX_POTENCIA} kW.`);
       return;
@@ -136,38 +139,43 @@ export default function SimuladorScreen() {
     setSaving(true);
 
     try {
+      // Actualiza la potencia del dispositivo si el usuario la cambió
       try {
         await apiClient.patch(`/devices/${selectedDevice.id}`, { potencia: potenciaIngresada });
       } catch (apiError) {
-        console.warn('Aviso: Backend no respondió al PATCH. Guardando en memoria local de todos modos.');
+        console.warn('No se pudo actualizar la potencia del dispositivo.');
       }
 
-      const nuevaProg = {
-        id: Date.now().toString(),
-        nombre: selectedDevice.nombre,
-        potencia: editedPotencia,
-        duracion: editedDuracion,
-        horaInicio: selectedHour,
-        coste: simulacion.costeTotalEuros,
-        kwh: simulacion.consumoTotalKwh,
-      };
+      const duracionNum = toNumber(editedDuracion) || 1;
+      const horaFin = Math.min(24, selectedHour + duracionNum);
 
-      const actualizadas = [...programaciones, nuevaProg];
-      setProgramaciones(actualizadas);
-      await AsyncStorage.setItem('programaciones_hoy', JSON.stringify(actualizadas));
+      const res = await crearProgramacion({
+        horaInicio: selectedHour,
+        horaFin,
+        duracionHoras: duracionNum,
+        potenciaW: potenciaIngresada,
+        costeEstimado: parseFloat(simulacion.costeTotalEuros),
+        id_dispositivo: selectedDevice.id,
+      });
+
+      const nuevaProg = mapProgFromBackend(res.data);
+      setProgramaciones((prev) => [...prev, nuevaProg]);
 
       Alert.alert('¡Añadido! ✅', `${selectedDevice.nombre} programado a las ${selectedHour}:00h.`);
     } catch (error) {
-      Alert.alert('Error', 'Problema al guardar en la memoria del móvil.');
+      Alert.alert('Error', 'No se pudo guardar la programación en el servidor.');
     } finally {
       setSaving(false);
     }
   };
 
-  const eliminarProgramacion = async (id: string) => {
-    const filtradas = programaciones.filter((p) => p.id !== id);
-    setProgramaciones(filtradas);
-    await AsyncStorage.setItem('programaciones_hoy', JSON.stringify(filtradas));
+  const eliminarProgramacion = async (id: string | number) => {
+    try {
+      await eliminarProgramacionApi(Number(id));
+      setProgramaciones((prev) => prev.filter((p) => p.id !== id && p.id !== Number(id)));
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo eliminar la programación.');
+    }
   };
 
   if (loading && devices.length === 0) {
@@ -224,16 +232,15 @@ export default function SimuladorScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
-      {/* MEJORADO para Android: Ajuste de behavior y offset */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={{ flex: 1 }}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContainer} 
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled" 
+          keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.pageTitle}>Programador Diario</Text>
 
@@ -451,12 +458,12 @@ export default function SimuladorScreen() {
               </View>
             )}
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
-                styles.button, 
-                (devices.length === 0 || excedePotencia) && { backgroundColor: '#bdc3c7' }
-              ]} 
-              onPress={handleProgramar} 
+                styles.button,
+                (devices.length === 0 || excedePotencia) && { backgroundColor: '#bdc3c7' },
+              ]}
+              onPress={handleProgramar}
               disabled={saving || devices.length === 0 || excedePotencia}
             >
               {saving ? (
@@ -494,7 +501,6 @@ export default function SimuladorScreen() {
             )}
           </View>
 
-          {/* MEJORADO: Espacio vacío extra grande al final para que el Scroll pueda subir por encima del teclado */}
           <View style={{ height: 100 }} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -504,7 +510,7 @@ export default function SimuladorScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
-  scrollContainer: { padding: 16, flexGrow: 1 }, 
+  scrollContainer: { padding: 16, flexGrow: 1 },
   pageTitle: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -540,7 +546,6 @@ const styles = StyleSheet.create({
   deviceName: { fontSize: 12, textAlign: 'center', color: '#7f8c8d' },
   deviceNameSelected: { color: '#2980b9', fontWeight: '600' },
   chart: { marginVertical: 8, borderRadius: 16, alignSelf: 'center' },
-
   sliderContainer: { marginTop: 10, paddingHorizontal: 5 },
   sliderLabel: { fontSize: 14, color: '#34495e', textAlign: 'center', marginBottom: 5 },
   hourValue: { fontWeight: 'bold', color: '#3498db', fontSize: 16 },
@@ -559,7 +564,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   tickText: { fontSize: 10, color: '#bdc3c7', fontWeight: 'bold' },
-
   mainCost: {
     fontSize: 32,
     fontWeight: '800',
@@ -594,7 +598,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-
   alertBox: { marginTop: 16, padding: 12, borderRadius: 8, borderWidth: 1 },
   alertRed: { backgroundColor: '#fadbd8', borderColor: '#e74c3c' },
   alertGreen: { backgroundColor: '#d5f5e3', borderColor: '#2ecc71' },
@@ -608,7 +611,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontStyle: 'italic',
   },
-
   progItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',

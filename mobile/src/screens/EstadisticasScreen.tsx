@@ -9,32 +9,60 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '../api/client';
+import { getProgramaciones } from '../api/programaciones';
+
+
+// Calcula el rango de fechas según el período seleccionado
+const getDateRange = (periodo: string): { desde: string; hasta: string } => {
+  const hoy = new Date();
+  const hasta = hoy.toISOString().split('T')[0];
+
+  if (periodo === 'Diario') {
+    return { desde: hasta, hasta };
+  } else if (periodo === 'Semanal') {
+    const diaSemana = hoy.getDay(); // 0=domingo
+    const diasDesdeElLunes = diaSemana === 0 ? 6 : diaSemana - 1;
+    const lunes = new Date(hoy);
+    lunes.setDate(hoy.getDate() - diasDesdeElLunes);
+    return { desde: lunes.toISOString().split('T')[0], hasta };
+  } else {
+    // Mensual: desde el primer día del mes
+    const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    return { desde: primero.toISOString().split('T')[0], hasta };
+  }
+};
+
 
 export default function EstadisticasScreen() {
   const [periodo, setPeriodo] = useState('Diario');
   const [unidad, setUnidad] = useState('Euros');
-  
-  const [programaciones, setProgramaciones] = useState<any[]>([]); 
-  const [precioMedio, setPrecioMedio] = useState(0.15); 
-  const [precioMinimo, setPrecioMinimo] = useState(0.10); 
+
+  // Almacena TODAS las programaciones del usuario (sin filtrar)
+  const [todasLasProgramaciones, setTodasLasProgramaciones] = useState<any[]>([]);
+  const [precioMedio, setPrecioMedio] = useState(0.15);
+  const [precioMinimo, setPrecioMinimo] = useState(0.10);
   const [loading, setLoading] = useState(true);
-  
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
+
 
   useFocusEffect(
     useCallback(() => {
       const fetchData = async () => {
         try {
           setLoading(true);
-          
-          const savedProgs = await AsyncStorage.getItem('programaciones_hoy');
-          if (savedProgs) {
-            setProgramaciones(JSON.parse(savedProgs));
-          } else {
-            setProgramaciones([]);
-          }
+
+          // Traemos TODAS sin filtrar por fecha — el filtro lo hacemos en memoria
+          const resProg = await getProgramaciones();
+          const todas = resProg.data.map((p: any) => ({
+            id: p.id,
+            nombre: p.dispositivo?.nombre ?? '—',
+            horaInicio: p.horaInicio,
+            fecha: p.fecha, // guardamos la fecha para poder filtrar por periodo
+            coste: parseFloat(p.costeEstimado).toFixed(4),
+            kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
+          }));
+          setTodasLasProgramaciones(todas);
 
           const resDash = await apiClient.get('/dashboard/today');
           if (resDash.data && resDash.data.today) {
@@ -52,24 +80,30 @@ export default function EstadisticasScreen() {
     }, [])
   );
 
-  // ELIMINAMOS los multiplicadores por 7 o por 30.
-  // Ahora el sistema es ESTRICTO: Suma única y exclusivamente lo que hay programado.
+
+  // Filtramos en memoria cada vez que cambia el período o los datos
+  const { desde, hasta } = getDateRange(periodo);
+  const programaciones = todasLasProgramaciones.filter(
+    (p) => p.fecha >= desde && p.fecha <= hasta
+  );
+
+
   const consumoTotalKwh = programaciones.reduce((acc, prog) => acc + parseFloat(prog.kwh), 0);
   const costeTotalEuros = programaciones.reduce((acc, prog) => acc + parseFloat(prog.coste), 0);
-  
-  const costeOptimoEuros = consumoTotalKwh * precioMinimo;
-  
-  let ahorroPotencial = costeTotalEuros - costeOptimoEuros;
-  if (ahorroPotencial < 0) ahorroPotencial = 0; 
 
-  const co2Evitado = consumoTotalKwh * 0.25; 
+  const costeOptimoEuros = consumoTotalKwh * precioMinimo;
+  let ahorroPotencial = costeTotalEuros - costeOptimoEuros;
+  if (ahorroPotencial < 0) ahorroPotencial = 0;
+
+  const co2Evitado = consumoTotalKwh * 0.25;
 
   const valorPrincipal = unidad === 'Euros' ? costeTotalEuros : consumoTotalKwh;
   const valorSecundario = unidad === 'Euros' ? consumoTotalKwh : costeTotalEuros;
   const textoUnidadPrincipal = unidad === 'Euros' ? '€' : 'kWh';
   const textoUnidadSecundaria = unidad === 'Euros' ? 'kWh' : '€';
 
-  if (loading && programaciones.length === 0) {
+
+  if (loading && todasLasProgramaciones.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#3498db" />
@@ -77,6 +111,7 @@ export default function EstadisticasScreen() {
       </SafeAreaView>
     );
   }
+
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -181,13 +216,18 @@ export default function EstadisticasScreen() {
         {mostrarDetalles && (
           <View style={styles.detallesContainer}>
             <Text style={styles.sectionTitleOutside}>Desglose de la Lista</Text>
-            
+
             {programaciones.length === 0 ? (
               <Text style={styles.smallNote}>No tienes usos programados. Ve al Simulador para empezar.</Text>
             ) : (
               programaciones.map(prog => (
                 <View key={prog.id} style={styles.detalleCard}>
-                  <Text style={styles.detalleName}>{prog.nombre} <Text style={{fontWeight: 'normal', fontSize: 13}}>({prog.horaInicio}:00h)</Text></Text>
+                  <Text style={styles.detalleName}>
+                    {prog.nombre}{' '}
+                    <Text style={{ fontWeight: 'normal', fontSize: 13 }}>
+                      ({prog.fecha} · {prog.horaInicio}:00h)
+                    </Text>
+                  </Text>
                   <View style={styles.rowBetween}>
                     <Text style={styles.detalleInfo}>{parseFloat(prog.kwh).toFixed(2)} kWh</Text>
                     <Text style={styles.detalleCoste}>{parseFloat(prog.coste).toFixed(2)} €</Text>
@@ -202,6 +242,7 @@ export default function EstadisticasScreen() {
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
