@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native'; // <-- AÑADIDO: useRoute
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { fetchTodayDashboard, TodayDashboard } from '../api/dashboard';
 
@@ -27,6 +27,9 @@ function getPriceLevelColor(priceKwh: number, avg: number): string {
 
 const App = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>(); // <-- AÑADIDO: Capturamos la ruta
+  const isGuest = route.params?.isGuest || false; // <-- AÑADIDO: Leemos si es invitado
+
   const [data, setData] = useState<TodayDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +77,9 @@ const App = () => {
 
   useFocusEffect(
     useCallback(() => {
+      // <-- AÑADIDO: Si es invitado, no bloqueamos el botón de volver atrás
+      if (isGuest) return undefined; 
+
       if (Platform.OS !== 'android') return undefined;
 
       const onBackPress = () => {
@@ -98,7 +104,7 @@ const App = () => {
         backSubscription.remove();
         unsubscribeBeforeRemove();
       };
-    }, [navigation, showExitAlert])
+    }, [navigation, showExitAlert, isGuest]) // <-- AÑADIDO: isGuest en el array de dependencias
   );
 
   if (loading && !data) {

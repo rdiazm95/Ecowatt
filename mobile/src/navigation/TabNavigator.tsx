@@ -58,6 +58,7 @@ function TabScreens({ route }: any) {
         name="Dashboard"
         component={DashboardScreen}
         options={{ tabBarLabel: 'Hoy' }}
+        initialParams={{ isGuest }} // <-- AÑADIDO: Pasamos la prop isGuest al Dashboard
       />
 
       {/* El resto solo para usuarios registrados */}
