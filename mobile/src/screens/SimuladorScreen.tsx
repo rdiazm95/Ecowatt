@@ -305,35 +305,14 @@ export default function SimuladorScreen() {
       ? simulacion.desglose.map((d: any) => toNumber(d.costeFranja))
       : [0];
 
-  const desgloseOrdenado =
-    simulacion?.desglose?.length > 0
-      ? [...simulacion.desglose].sort(
-          (a: any, b: any) => toNumber(a.costeFranja) - toNumber(b.costeFranja)
-        )
-      : [];
-
-  const horasBaratasReferencia = desgloseOrdenado.slice(0, Math.min(3, desgloseOrdenado.length));
-
-  const costeBaratoMedio =
-    horasBaratasReferencia.length > 0
-      ? horasBaratasReferencia.reduce(
-          (acc: number, item: any) => acc + toNumber(item.costeFranja),
-          0
-        ) / horasBaratasReferencia.length
-      : 0;
-
-  const costeActual = toNumber(simulacion?.costeTotalEuros);
-  const diferenciaVsBarata = Math.max(0, costeActual - costeBaratoMedio);
-
-  const horaBarataReferencia =
-    horasBaratasReferencia.length > 0
-      ? horasBaratasReferencia[0].hora
-      : simulacion?.recomendacion?.horaOptima;
-
+  // ── Clasificación de franja ──────────────────────────────────────────────
   const franjaActual = simulacion?.recomendacion?.franja || '';
   const esCara = franjaActual.includes('CARA');
   const esBarata = franjaActual.includes('BARATA');
   const esIntermedia = !!simulacion?.recomendacion && !esCara && !esBarata;
+
+  const etiquetaFranja = esCara ? 'cara' : esBarata ? 'barata' : 'intermedia';
+  // ────────────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -508,51 +487,23 @@ export default function SimuladorScreen() {
                     ]}
                   >
                     {esBarata && (
-                      <>
-                        <Text style={styles.alertTitle}>✅ Estás en una hora barata</Text>
-                        <Text style={styles.alertSub}>Buen momento para usar este electrodoméstico.</Text>
-                      </>
+                      <Text style={styles.alertTitle}>✅ Hora barata</Text>
                     )}
 
                     {esIntermedia && (
-                      <>
-                        <Text style={styles.alertTitle}>🟡 Estás en una hora intermedia</Text>
-                        {diferenciaVsBarata > 0.001 ? (
-                          <Text style={styles.alertSub}>
-                            Comparado con la media de las horas más baratas, podrías pagar aproximadamente{' '}
-                            <Text style={{ fontWeight: 'bold' }}>{diferenciaVsBarata.toFixed(3)} € menos</Text> si lo
-                            mueves.
-                          </Text>
-                        ) : (
-                          <Text style={styles.alertSub}>
-                            Hay franjas algo mejores, pero esta hora tampoco es mala.
-                          </Text>
-                        )}
-
-                        {horaBarataReferencia !== undefined && horaBarataReferencia !== null && (
-                          <Text style={styles.alertSub}>
-                            💡 Prueba una franja barata alrededor de las{' '}
-                            {String(horaBarataReferencia).padStart(2, '0')}:00h.
-                          </Text>
-                        )}
-                      </>
+                      <Text style={styles.alertTitle}>🟡 Hora intermedia</Text>
                     )}
 
                     {esCara && (
-                      <>
-                        <Text style={styles.alertTitle}>🔴 Estás en una hora cara</Text>
-                        {diferenciaVsBarata > 0.001 ? (
-                          <Text style={styles.alertSub}>
-                            Comparado con la media de las horas más baratas, podrías pagar aproximadamente{' '}
-                            <Text style={{ fontWeight: 'bold' }}>{diferenciaVsBarata.toFixed(3)} € menos</Text> si lo
-                            mueves a una franja barata.
-                          </Text>
-                        ) : (
-                          <Text style={styles.alertSub}>
-                            Te conviene moverlo a una franja barata del día.
-                          </Text>
-                        )}
-                      </>
+                      <Text style={styles.alertTitle}>🔴 Hora cara</Text>
+                    )}
+
+                    {duracionActual > 1 && (
+                      <Text style={styles.alertSub}>
+                        La media del precio de esta franja es{' '}
+                        <Text style={{ fontWeight: 'bold' }}>{etiquetaFranja}</Text>{' '}
+                        comparada con el precio del día.
+                      </Text>
                     )}
 
                     {simulacion.recomendacion.avisoManana && (
