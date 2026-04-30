@@ -16,6 +16,7 @@ import { apiClient } from '../api/client';
 import { getProgramaciones } from '../api/programaciones';
 
 
+
 // ---------------------------------------------------------------------------
 // Componente: ScrollView con indicador lateral personalizado
 // ---------------------------------------------------------------------------
@@ -24,22 +25,27 @@ interface ScrollWithIndicatorProps {
   maxHeight: number;
 }
 
+
 const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, maxHeight }) => {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(maxHeight);
 
+
   const showIndicator = contentHeight > containerHeight;
+
 
   const thumbHeight = showIndicator
     ? Math.max(28, (containerHeight / contentHeight) * containerHeight)
     : 0;
+
 
   const thumbTop = scrollY.interpolate({
     inputRange: [0, Math.max(1, contentHeight - containerHeight)],
     outputRange: [0, Math.max(0, containerHeight - thumbHeight)],
     extrapolate: 'clamp',
   });
+
 
   return (
     <View style={{ maxHeight, flexDirection: 'row' }}>
@@ -58,6 +64,7 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
         {children}
       </ScrollView>
 
+
       {showIndicator && (
         <View style={indicatorStyles.track}>
           <Animated.View
@@ -71,6 +78,7 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
     </View>
   );
 };
+
 
 const indicatorStyles = StyleSheet.create({
   track: {
@@ -89,14 +97,17 @@ const indicatorStyles = StyleSheet.create({
 });
 
 
+
 // ---------------------------------------------------------------------------
 // Helper: rango de fechas por período
 // ---------------------------------------------------------------------------
 const formatDateToISO = (date: Date): string => date.toISOString().split('T')[0];
 
+
 const getDateRange = (periodo: string): { desde: string; hasta: string } => {
   const hoy = new Date();
   const hasta = formatDateToISO(hoy);
+
 
   if (periodo === 'Diario') {
     return { desde: hasta, hasta };
@@ -113,6 +124,7 @@ const getDateRange = (periodo: string): { desde: string; hasta: string } => {
 };
 
 
+
 // ---------------------------------------------------------------------------
 // Pantalla principal
 // ---------------------------------------------------------------------------
@@ -126,9 +138,13 @@ export default function EstadisticasScreen() {
   // NUEVOS ESTADOS PARA DATOS DINÁMICOS
   const [horasPico, setHorasPico] = useState<any[]>([]);
   const [huellaCarbonoMedia, setHuellaCarbonoMedia] = useState<number>(250); // 250 gCO2eq/kWh por defecto
+  // ✅ CAMBIO 1: Nuevo estado — mapa de CO2 por hora del día { hora: gCO2/kWh }
+  const [co2PorHora, setCo2PorHora] = useState<Record<number, number>>({});
+
 
   const [loading, setLoading] = useState(true);
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
+
 
   // Filtros
   const [devices, setDevices] = useState<any[]>([]);
@@ -137,15 +153,18 @@ export default function EstadisticasScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
 
+
   useFocusEffect(
     useCallback(() => {
       const fetchData = async () => {
         try {
           setLoading(true);
 
+
           // 1. Obtener dispositivos
           const resDevices = await apiClient.get('/devices');
           setDevices(resDevices.data);
+
 
           // 2. Obtener programaciones
           const resProg = await getProgramaciones();
@@ -154,12 +173,13 @@ export default function EstadisticasScreen() {
             nombre: p.dispositivo?.nombre ?? '—',
             dispositivoId: p.dispositivo?.id ?? null,
             horaInicio: Number(p.horaInicio),
-            duracion: Number(p.duracionHoras) || 0, // Extraemos la duración para calcular el fin
+            duracion: Number(p.duracionHoras) || 0,
             fecha: p.fecha,
             coste: parseFloat(p.costeEstimado).toFixed(4),
             kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
           }));
           setTodasLasProgramaciones(todas);
+
 
           // 3. Obtener Dashboard general (precios)
           const resDash = await apiClient.get('/dashboard/today');
@@ -167,6 +187,7 @@ export default function EstadisticasScreen() {
             setPrecioMedio(resDash.data.today.avg);
             setPrecioMinimo(resDash.data.today.min);
           }
+
 
           // 4. Obtener Horas Pico Dinámicas
           try {
@@ -178,19 +199,31 @@ export default function EstadisticasScreen() {
             console.warn('No se pudieron cargar las horas pico');
           }
 
+
           // 5. Obtener Huella de Carbono del día
           try {
             const resPrecios = await apiClient.get('/prices/today');
             if (resPrecios.data && resPrecios.data.length > 0) {
               const preciosConCo2 = resPrecios.data.filter((p: any) => p.carbonFootprint != null);
               if (preciosConCo2.length > 0) {
-                const mediaCo2 = preciosConCo2.reduce((acc: number, p: any) => acc + Number(p.carbonFootprint), 0) / preciosConCo2.length;
+                // ✅ CAMBIO 2: Además de la media global (fallback), construimos el mapa hora → CO2
+                const mediaCo2 =
+                  preciosConCo2.reduce((acc: number, p: any) => acc + Number(p.carbonFootprint), 0) /
+                  preciosConCo2.length;
                 setHuellaCarbonoMedia(mediaCo2);
+
+                const mapa: Record<number, number> = {};
+                preciosConCo2.forEach((p: any) => {
+                  const hora = new Date(p.datetime).getUTCHours();
+                  mapa[hora] = Number(p.carbonFootprint);
+                });
+                setCo2PorHora(mapa);
               }
             }
           } catch (e) {
             console.warn('No se pudo cargar la huella de carbono');
           }
+
 
         } catch (error) {
           console.error('Error cargando estadísticas:', error);
@@ -199,9 +232,11 @@ export default function EstadisticasScreen() {
         }
       };
 
+
       fetchData();
     }, [])
   );
+
 
 
   // Filtrado en memoria
@@ -218,6 +253,7 @@ export default function EstadisticasScreen() {
   }
 
 
+
   const consumoTotalKwh = programaciones.reduce((acc, prog) => acc + parseFloat(prog.kwh), 0);
   const costeTotalEuros = programaciones.reduce((acc, prog) => acc + parseFloat(prog.coste), 0);
   const costeOptimoEuros = consumoTotalKwh * precioMinimo;
@@ -225,13 +261,23 @@ export default function EstadisticasScreen() {
   let ahorroPotencial = costeTotalEuros - costeOptimoEuros;
   if (ahorroPotencial < 0) ahorroPotencial = 0;
 
-  // CÁLCULO DE HUELLA DE CARBONO DINÁMICO (convertido de gramos a kg)
-  const co2Evitado = (consumoTotalKwh * huellaCarbonoMedia) / 1000;
+
+  // ✅ CAMBIO 3: CO2 calculado hora a hora usando el mapa de ESIOS.
+  // Por cada programación, se usa el factor CO2 de su hora de inicio.
+  // Si esa hora no tiene dato (ESIOS no devolvió ese slot), se usa la media como fallback.
+  const co2Evitado = programaciones.reduce((acc, prog) => {
+    const hora = Math.floor(prog.horaInicio) % 24;
+    const factorCo2 = co2PorHora[hora] ?? huellaCarbonoMedia;
+    const kwhProg = parseFloat(prog.kwh);
+    return acc + (kwhProg * factorCo2) / 1000; // gramos → kg
+  }, 0);
+
 
   const valorPrincipal = unidad === 'Euros' ? costeTotalEuros : consumoTotalKwh;
   const valorSecundario = unidad === 'Euros' ? consumoTotalKwh : costeTotalEuros;
   const textoUnidadPrincipal = unidad === 'Euros' ? '€' : 'kWh';
   const textoUnidadSecundaria = unidad === 'Euros' ? 'kWh' : '€';
+
 
 
   const onDateChange = (event: DateTimePickerEvent, date?: Date) => {
@@ -240,6 +286,7 @@ export default function EstadisticasScreen() {
       setFiltroFecha(date);
     }
   };
+
 
 
   if (loading && todasLasProgramaciones.length === 0) {
@@ -252,10 +299,12 @@ export default function EstadisticasScreen() {
   }
 
 
+
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.pageTitle}>EcoWatt - Estadísticas</Text>
+
 
         {/* ── Tarjeta de filtros ── */}
         <View style={styles.card}>
@@ -275,6 +324,7 @@ export default function EstadisticasScreen() {
               </View>
             </View>
 
+
             <View>
               <Text style={styles.label}>Unidad</Text>
               <View style={styles.segmentedControl}>
@@ -292,6 +342,7 @@ export default function EstadisticasScreen() {
               </View>
             </View>
           </View>
+
 
           {devices.length > 0 && (
             <View style={{ marginTop: 14 }}>
@@ -320,6 +371,7 @@ export default function EstadisticasScreen() {
             </View>
           )}
 
+
           <View style={{ marginTop: 14 }}>
             <Text style={styles.label}>Fecha exacta (opcional)</Text>
             <View style={styles.dateRow}>
@@ -339,12 +391,14 @@ export default function EstadisticasScreen() {
                 </Text>
               </TouchableOpacity>
 
+
               {filtroFecha && (
                 <TouchableOpacity style={styles.clearBtn} onPress={() => setFiltroFecha(null)}>
                   <Text style={styles.clearBtnText}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
+
 
             {showDatePicker && (
               <View>
@@ -371,6 +425,7 @@ export default function EstadisticasScreen() {
         </View>
 
 
+
         {/* ── Consumo total ── */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Consumo Total Programado</Text>
@@ -384,6 +439,7 @@ export default function EstadisticasScreen() {
             (Equivalente a {valorSecundario.toFixed(2)} {textoUnidadSecundaria})
           </Text>
         </View>
+
 
 
         {/* ── Horas pico DINÁMICAS ── */}
@@ -410,6 +466,7 @@ export default function EstadisticasScreen() {
         </View>
 
 
+
         {/* ── Comparación ahorro ── */}
         <Text style={styles.sectionTitleOutside}>Comparación de Ahorro (Euros €)</Text>
         <View style={styles.rowBetween}>
@@ -430,6 +487,7 @@ export default function EstadisticasScreen() {
         </View>
 
 
+
         {/* ── Sostenibilidad ── */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Huella de Carbono y Sostenibilidad</Text>
@@ -445,6 +503,7 @@ export default function EstadisticasScreen() {
         </View>
 
 
+
         {/* ── Desglose por aparato ── */}
         <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarDetalles(!mostrarDetalles)}>
           <Text style={styles.buttonText}>
@@ -452,9 +511,11 @@ export default function EstadisticasScreen() {
           </Text>
         </TouchableOpacity>
 
+
         {mostrarDetalles && (
           <View style={styles.detallesContainer}>
             <Text style={styles.sectionTitleOutside}>Desglose de la Lista</Text>
+
 
             {programaciones.length === 0 ? (
               <Text style={styles.smallNote}>
@@ -465,14 +526,15 @@ export default function EstadisticasScreen() {
             ) : (
               <ScrollWithIndicator maxHeight={320}>
                 {programaciones.map((prog) => {
-                  // CÁLCULO DE HORA DE FIN
                   const totalTime = prog.horaInicio + prog.duracion;
-                  const endHour = Math.floor(totalTime) % 24; // Módulo 24 por si cruza la medianoche
+                  const endHour = Math.floor(totalTime) % 24;
                   const endMinutes = Math.round((totalTime % 1) * 60);
+
 
                   const startH = String(prog.horaInicio).padStart(2, '0');
                   const endH = String(endHour).padStart(2, '0');
                   const endM = String(endMinutes).padStart(2, '0');
+
 
                   return (
                     <View key={prog.id} style={styles.detalleCard}>
@@ -494,11 +556,13 @@ export default function EstadisticasScreen() {
           </View>
         )}
 
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
 
 
 const styles = StyleSheet.create({

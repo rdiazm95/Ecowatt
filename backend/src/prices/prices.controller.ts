@@ -26,6 +26,15 @@ export class PricesController {
   }
 
   // ─────────────────────────────────────────
+  // Horas pico del día (las 4 franjas más caras)
+  // ─────────────────────────────────────────
+  @Get('horas-pico')
+  async getHorasPico() {
+    const horasPico = await this.pricesService.getHorasPicoHoy();
+    return horasPico;
+  }
+
+  // ─────────────────────────────────────────
   // SOLO DESARROLLO: dispara el centinela manualmente
   // Eliminar o proteger con guard antes de producción
   // ─────────────────────────────────────────
