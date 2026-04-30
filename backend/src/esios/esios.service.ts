@@ -42,6 +42,29 @@ export class EsiosService {
     }
   }
 
+  // --- NUEVO MÉTODO: Huella de Carbono ---
+  async getHuellaCarbono(date: Date): Promise<any> {
+    const startDate = this.formatDate(date);
+    const endDate = this.formatDate(date);
+    const tz = this.getSpainTimezoneOffset(date);
+
+    try {
+      // El indicador 10391 corresponde a las emisiones de CO2 asociadas a la generación en España
+      const response = await this.client.get('/indicators/10391', {
+        params: {
+          start_date: `${startDate}T00:00:00${tz}`,
+          end_date:   `${endDate}T23:59:59${tz}`,
+        },
+      });
+
+      this.logger.log(`Datos de Huella de Carbono obtenidos para ${startDate} (offset ${tz})`);
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Error obteniendo datos de Huella de Carbono ESIOS: ${(error as Error).message}`);
+      throw error;
+    }
+  }
+
   /**
    * Devuelve el offset de España para una fecha concreta.
    * Horario de verano (CEST): último domingo de marzo → último domingo de octubre → +02:00

@@ -122,13 +122,17 @@ export default function EstadisticasScreen() {
   const [todasLasProgramaciones, setTodasLasProgramaciones] = useState<any[]>([]);
   const [precioMedio, setPrecioMedio] = useState(0.15);
   const [precioMinimo, setPrecioMinimo] = useState(0.10);
+  
+  // NUEVOS ESTADOS PARA DATOS DINÁMICOS
+  const [horasPico, setHorasPico] = useState<any[]>([]);
+  const [huellaCarbonoMedia, setHuellaCarbonoMedia] = useState<number>(250); // 250 gCO2eq/kWh por defecto
+
   const [loading, setLoading] = useState(true);
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
 
   // Filtros
   const [devices, setDevices] = useState<any[]>([]);
   const [filtroDispositivoId, setFiltroDispositivoId] = useState<number | null>(null);
-  // CAMBIO: Date en lugar de string para el filtro de fecha
   const [filtroFecha, setFiltroFecha] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -139,26 +143,55 @@ export default function EstadisticasScreen() {
         try {
           setLoading(true);
 
+          // 1. Obtener dispositivos
           const resDevices = await apiClient.get('/devices');
           setDevices(resDevices.data);
 
+          // 2. Obtener programaciones
           const resProg = await getProgramaciones();
           const todas = resProg.data.map((p: any) => ({
             id: p.id,
             nombre: p.dispositivo?.nombre ?? '—',
             dispositivoId: p.dispositivo?.id ?? null,
-            horaInicio: p.horaInicio,
+            horaInicio: Number(p.horaInicio),
+            duracion: Number(p.duracionHoras) || 0, // Extraemos la duración para calcular el fin
             fecha: p.fecha,
             coste: parseFloat(p.costeEstimado).toFixed(4),
             kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
           }));
           setTodasLasProgramaciones(todas);
 
+          // 3. Obtener Dashboard general (precios)
           const resDash = await apiClient.get('/dashboard/today');
           if (resDash.data?.today) {
             setPrecioMedio(resDash.data.today.avg);
             setPrecioMinimo(resDash.data.today.min);
           }
+
+          // 4. Obtener Horas Pico Dinámicas
+          try {
+            const resPico = await apiClient.get('/prices/horas-pico');
+            if (resPico.data) {
+              setHorasPico(resPico.data);
+            }
+          } catch (e) {
+            console.warn('No se pudieron cargar las horas pico');
+          }
+
+          // 5. Obtener Huella de Carbono del día
+          try {
+            const resPrecios = await apiClient.get('/prices/today');
+            if (resPrecios.data && resPrecios.data.length > 0) {
+              const preciosConCo2 = resPrecios.data.filter((p: any) => p.carbonFootprint != null);
+              if (preciosConCo2.length > 0) {
+                const mediaCo2 = preciosConCo2.reduce((acc: number, p: any) => acc + Number(p.carbonFootprint), 0) / preciosConCo2.length;
+                setHuellaCarbonoMedia(mediaCo2);
+              }
+            }
+          } catch (e) {
+            console.warn('No se pudo cargar la huella de carbono');
+          }
+
         } catch (error) {
           console.error('Error cargando estadísticas:', error);
         } finally {
@@ -188,9 +221,12 @@ export default function EstadisticasScreen() {
   const consumoTotalKwh = programaciones.reduce((acc, prog) => acc + parseFloat(prog.kwh), 0);
   const costeTotalEuros = programaciones.reduce((acc, prog) => acc + parseFloat(prog.coste), 0);
   const costeOptimoEuros = consumoTotalKwh * precioMinimo;
+  
   let ahorroPotencial = costeTotalEuros - costeOptimoEuros;
   if (ahorroPotencial < 0) ahorroPotencial = 0;
-  const co2Evitado = consumoTotalKwh * 0.25;
+
+  // CÁLCULO DE HUELLA DE CARBONO DINÁMICO (convertido de gramos a kg)
+  const co2Evitado = (consumoTotalKwh * huellaCarbonoMedia) / 1000;
 
   const valorPrincipal = unidad === 'Euros' ? costeTotalEuros : consumoTotalKwh;
   const valorSecundario = unidad === 'Euros' ? consumoTotalKwh : costeTotalEuros;
@@ -198,7 +234,6 @@ export default function EstadisticasScreen() {
   const textoUnidadSecundaria = unidad === 'Euros' ? 'kWh' : '€';
 
 
-  // CAMBIO: manejador del DateTimePicker
   const onDateChange = (event: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
     if (event.type === 'set' && date) {
@@ -258,7 +293,6 @@ export default function EstadisticasScreen() {
             </View>
           </View>
 
-          {/* Filtro por electrodoméstico */}
           {devices.length > 0 && (
             <View style={{ marginTop: 14 }}>
               <Text style={styles.label}>Electrodoméstico</Text>
@@ -286,7 +320,6 @@ export default function EstadisticasScreen() {
             </View>
           )}
 
-          {/* CAMBIO: Filtro por fecha — calendario nativo en lugar de TextInput */}
           <View style={{ marginTop: 14 }}>
             <Text style={styles.label}>Fecha exacta (opcional)</Text>
             <View style={styles.dateRow}>
@@ -324,7 +357,6 @@ export default function EstadisticasScreen() {
                   onChange={onDateChange}
                   style={{ marginTop: 8 }}
                 />
-                {/* En iOS el picker inline no se cierra solo — botón de confirmación */}
                 {Platform.OS === 'ios' && (
                   <TouchableOpacity
                     style={styles.iosCloseBtn}
@@ -354,15 +386,27 @@ export default function EstadisticasScreen() {
         </View>
 
 
-        {/* ── Horas pico ── */}
+        {/* ── Horas pico DINÁMICAS ── */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
             <Text style={styles.sectionTitle}>Horas Pico de Uso de la Red</Text>
             <Text style={styles.smallNote}>Franjas más caras hoy</Text>
           </View>
-          <Text style={styles.peakText}>1. 19:00h - 21:00h (Evitar 👕)</Text>
-          <Text style={styles.peakText}>2. 12:00h - 13:00h (Evitar 🍱)</Text>
-          <Text style={styles.peakText}>3. 08:00h - 09:00h (Evitar ☕)</Text>
+          
+          {horasPico.length > 0 ? (
+            horasPico.map((pico, index) => {
+              const date = new Date(pico.datetime);
+              const horaInicio = date.getHours().toString().padStart(2, '0');
+              const horaFin = (date.getHours() + 1).toString().padStart(2, '0');
+              return (
+                <Text key={index} style={styles.peakText}>
+                  {index + 1}. {horaInicio}:00h - {horaFin}:00h ({Number(pico.valueKwh).toFixed(3)} €/kWh)
+                </Text>
+              );
+            })
+          ) : (
+            <Text style={styles.smallNote}>No se han podido cargar las horas pico.</Text>
+          )}
         </View>
 
 
@@ -392,9 +436,9 @@ export default function EstadisticasScreen() {
           <View style={styles.ecoRow}>
             <Text style={styles.treeIcon}>🌳</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.ecoTitle}>{co2Evitado.toFixed(1)} kg CO2e</Text>
+              <Text style={styles.ecoTitle}>{co2Evitado.toFixed(2)} kg CO2e</Text>
               <Text style={styles.ecoDescription}>
-                Asociados a tu consumo programado. Usar energía en horas valle reduce este impacto al usar renovables.
+                Asociados a tu consumo programado (basado en datos reales de red). Usar energía en horas valle reduce este impacto al usar renovables.
               </Text>
             </View>
           </View>
@@ -419,22 +463,32 @@ export default function EstadisticasScreen() {
                   : 'No tienes usos programados. Ve al Simulador para empezar.'}
               </Text>
             ) : (
-              // CAMBIO: ScrollWithIndicator reemplaza al ScrollView básico
               <ScrollWithIndicator maxHeight={320}>
-                {programaciones.map((prog) => (
-                  <View key={prog.id} style={styles.detalleCard}>
-                    <Text style={styles.detalleName}>
-                      {prog.nombre}{' '}
-                      <Text style={{ fontWeight: 'normal', fontSize: 13 }}>
-                        ({prog.fecha} · {prog.horaInicio}:00h)
+                {programaciones.map((prog) => {
+                  // CÁLCULO DE HORA DE FIN
+                  const totalTime = prog.horaInicio + prog.duracion;
+                  const endHour = Math.floor(totalTime) % 24; // Módulo 24 por si cruza la medianoche
+                  const endMinutes = Math.round((totalTime % 1) * 60);
+
+                  const startH = String(prog.horaInicio).padStart(2, '0');
+                  const endH = String(endHour).padStart(2, '0');
+                  const endM = String(endMinutes).padStart(2, '0');
+
+                  return (
+                    <View key={prog.id} style={styles.detalleCard}>
+                      <Text style={styles.detalleName}>
+                        {prog.nombre}{' '}
+                        <Text style={{ fontWeight: 'normal', fontSize: 13 }}>
+                          ({prog.fecha} · {startH}:00h - {endH}:{endM}h)
+                        </Text>
                       </Text>
-                    </Text>
-                    <View style={styles.rowBetween}>
-                      <Text style={styles.detalleInfo}>{parseFloat(prog.kwh).toFixed(2)} kWh</Text>
-                      <Text style={styles.detalleCoste}>{parseFloat(prog.coste).toFixed(2)} €</Text>
+                      <View style={styles.rowBetween}>
+                        <Text style={styles.detalleInfo}>{parseFloat(prog.kwh).toFixed(2)} kWh</Text>
+                        <Text style={styles.detalleCoste}>{parseFloat(prog.coste).toFixed(2)} €</Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </ScrollWithIndicator>
             )}
           </View>
@@ -480,12 +534,10 @@ const styles = StyleSheet.create({
   detalleName: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50', marginBottom: 4 },
   detalleInfo: { fontSize: 14, color: '#7f8c8d' },
   detalleCoste: { fontSize: 15, fontWeight: 'bold', color: '#e74c3c' },
-  // Chips de filtro
   filterChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: '#ecf0f1', marginRight: 8, borderWidth: 1, borderColor: '#dde1e7' },
   filterChipActive: { backgroundColor: '#3498db', borderColor: '#2980b9' },
   filterChipText: { fontSize: 12, fontWeight: '600', color: '#7f8c8d' },
   filterChipTextActive: { color: '#fff' },
-  // Selector de fecha tipo calendario
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dateButton: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#bdc3c7', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#fafafa', gap: 8 },
   dateButtonIcon: { fontSize: 16 },

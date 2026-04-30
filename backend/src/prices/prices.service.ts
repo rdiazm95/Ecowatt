@@ -95,7 +95,7 @@ export class PricesService {
     waitForCompletion: true,
   })
   async fetchTomorrowPrices(): Promise<void> {
-    this.logger.log('CRON: Iniciando descarga de precios para mañana...');
+    this.logger.log('CRON: Iniciando descarga de precios y CO2 para mañana...');
     const tomorrow = this.getTomorrowSpainAsUtcNeutral();
     await this.fetchAndSavePrices(tomorrow);
   }
@@ -154,6 +154,21 @@ export class PricesService {
   }
 
   // ─────────────────────────────────────────
+  // HORAS PICO DEL DÍA (NUEVO)
+  // ─────────────────────────────────────────
+  async getHorasPicoHoy(): Promise<Price[]> {
+    const todayPrices = await this.getTodayPrices();
+    if (!todayPrices || todayPrices.length === 0) return [];
+
+    // Ordenamos de mayor a menor precio y cogemos las 4 horas más caras
+    const sortedByPrice = [...todayPrices].sort((a, b) => Number(b.valueKwh) - Number(a.valueKwh));
+    const top4 = sortedByPrice.slice(0, 4);
+
+    // Las devolvemos ordenadas cronológicamente para que se muestren bien en la app
+    return top4.sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+  }
+
+  // ─────────────────────────────────────────
   // ARRANQUE
   // ─────────────────────────────────────────
   async onModuleInit(): Promise<void> {
@@ -181,20 +196,37 @@ export class PricesService {
   }
 
   // ─────────────────────────────────────────
-  // FETCH & SAVE
+  // FETCH & SAVE (ACTUALIZADO PARA HUELLA DE CARBONO)
   // ─────────────────────────────────────────
   async fetchAndSavePrices(date: Date): Promise<Price[]> {
     try {
-      const data = await this.esiosService.getPVPCPrices(date);
-      const values = data.indicator?.values || [];
+      // 1. Peticiones en paralelo. Si la huella de carbono falla, capturamos el error 
+      // para que no tumbe la obtención de los precios (que es el core de tu app).
+      const [pvpcData, co2Data] = await Promise.all([
+        this.esiosService.getPVPCPrices(date),
+        this.esiosService.getHuellaCarbono(date).catch(e => {
+          this.logger.warn(`No se pudo obtener la huella de carbono para ${date.toISOString()}: ${e.message}`);
+          return null; 
+        })
+      ]);
+
+      const pvpcValues = pvpcData?.indicator?.values || [];
+      const co2Values = co2Data?.indicator?.values || [];
 
       const prices: Price[] = [];
 
-      for (const item of values) {
+      for (const item of pvpcValues) {
+        const parsedDatetime = this.parseEsiosDatetime(item.datetime as string);
+        
+        // 2. Buscamos el valor de CO2 utilizando el string en crudo del datetime de ESIOS
+        // Esto evita cualquier problema de desfase de tu zona horaria local.
+        const co2Item = co2Values.find(c => c.datetime === item.datetime);
+
         const price = this.priceRepository.create({
-          datetime: this.parseEsiosDatetime(item.datetime as string),
+          datetime: parsedDatetime,
           value: item.value,
           valueKwh: item.value / 1000,
+          carbonFootprint: co2Item ? co2Item.value : null, // Asignamos la huella
           geoZone: 'peninsula',
           indicatorId: 1001,
         });
@@ -205,10 +237,18 @@ export class PricesService {
 
         if (!existing) {
           prices.push(await this.priceRepository.save(price));
+        } else {
+          // Si el precio ya existía pero no tenía huella de carbono, lo actualizamos.
+          // Esto es útil ahora mismo, ya que tienes precios guardados de días anteriores sin CO2.
+          if (existing.carbonFootprint == null && co2Item) {
+            existing.carbonFootprint = co2Item.value;
+            await this.priceRepository.save(existing);
+            prices.push(existing);
+          }
         }
       }
 
-      this.logger.log(`Guardados ${prices.length} precios para ${date.toISOString().substring(0, 10)}`);
+      this.logger.log(`Procesados ${prices.length} precios para ${date.toISOString().substring(0, 10)}`);
       return prices;
     } catch (error) {
       if (error instanceof Error) {

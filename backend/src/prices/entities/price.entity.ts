@@ -15,6 +15,10 @@ export class Price {
   @Column({ type: 'decimal', precision: 10, scale: 5 })
   valueKwh: number; // €/kWh (value / 1000)
 
+  // --- NUEVA COLUMNA: Huella de Carbono ---
+  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true })
+  carbonFootprint: number; // gCO2eq/kWh (o la unidad devuelta por ESIOS)
+
   @Column({ default: 'peninsula' })
   geoZone: string;
 
@@ -23,5 +27,6 @@ export class Price {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
+  
   date: string | number | Date;
 }
