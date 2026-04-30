@@ -13,10 +13,10 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
-import MultiSlider from '@ptomasroos/react-native-multi-slider';
 import { apiClient } from '../api/client';
 import { getProgramaciones, crearProgramacion, eliminarProgramacion as eliminarProgramacionApi } from '../api/programaciones';
 
@@ -24,6 +24,28 @@ import { getProgramaciones, crearProgramacion, eliminarProgramacion as eliminarP
 
 const screenWidth = Dimensions.get('window').width;
 const MAX_POTENCIA = 999.99;
+
+
+
+// ---------------------------------------------------------------------------
+// Helpers de tiempo
+// ---------------------------------------------------------------------------
+const timeToDecimal = (date: Date): number =>
+  date.getHours() + date.getMinutes() / 60;
+
+const getDuracion = (start: Date, end: Date): number => {
+  const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  return diff > 0 ? parseFloat(diff.toFixed(4)) : 0.25;
+};
+
+const formatTime = (date: Date): string =>
+  `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}h`;
+
+const decimalToTimeStr = (decimal: number): string => {
+  const h = Math.floor(decimal);
+  const m = Math.round((decimal - h) * 60);
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}h`;
+};
 
 
 
@@ -108,8 +130,8 @@ const mapProgFromBackend = (p: any) => ({
   id: p.id,
   nombre: p.dispositivo?.nombre ?? '—',
   potencia: parseFloat(p.potenciaW).toString(),
-  duracion: parseFloat(p.duracionHoras).toString(),
-  horaInicio: p.horaInicio,
+  duracion: parseFloat(p.duracionHoras).toFixed(2),
+  horaInicio: parseFloat(p.horaInicio),
   coste: parseFloat(p.costeEstimado).toFixed(4),
   kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
 });
@@ -117,14 +139,25 @@ const mapProgFromBackend = (p: any) => ({
 
 
 export default function SimuladorScreen() {
-  const currentRealHour = new Date().getHours();
+  const currentRealHour = new Date().getHours() + new Date().getMinutes() / 60;
 
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<any>(null);
   const [programaciones, setProgramaciones] = useState<any[]>([]);
 
-  const [selectedHour, setSelectedHour] = useState(currentRealHour);
-  const [editedDuracion, setEditedDuracion] = useState('1');
+  const [startTime, setStartTime] = useState<Date>(() => {
+    const d = new Date();
+    d.setMinutes(0, 0, 0);
+    return d;
+  });
+  const [endTime, setEndTime] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1, 0, 0, 0);
+    return d;
+  });
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
   const [editedPotencia, setEditedPotencia] = useState('');
 
   const [simulacion, setSimulacion] = useState<any>(null);
@@ -135,6 +168,7 @@ export default function SimuladorScreen() {
 
   const potenciaIngresada = toNumber(editedPotencia);
   const excedePotencia = potenciaIngresada > MAX_POTENCIA;
+  const duracionActual = getDuracion(startTime, endTime);
 
   useFocusEffect(
     useCallback(() => {
@@ -171,27 +205,32 @@ export default function SimuladorScreen() {
   useEffect(() => {
     if (selectedDevice) {
       setEditedPotencia(selectedDevice.potencia.toString());
-      setEditedDuracion(selectedDevice.duracion ? selectedDevice.duracion.toString() : '1');
+      // Si el dispositivo tiene duración por defecto, ajustar la hora fin
+      if (selectedDevice.duracion) {
+        const dur = parseFloat(selectedDevice.duracion);
+        const newEnd = new Date(startTime.getTime() + dur * 60 * 60 * 1000);
+        setEndTime(newEnd);
+      }
     }
   }, [selectedDevice]);
 
   const calcular = async (
     disp = selectedDevice,
-    hr = selectedHour,
-    dur = editedDuracion,
+    start = startTime,
+    end = endTime,
     pot = editedPotencia
   ) => {
     if (!disp) return;
 
     try {
-      const duracionNum = toNumber(dur) || 1;
+      const duracionNum = getDuracion(start, end);
       const potenciaNum = toNumber(pot) || 0;
 
       if (potenciaNum === 0 || potenciaNum > MAX_POTENCIA) return;
 
       const resSimulador = await apiClient.post('/simulator/calculate', {
         deviceId: disp.id,
-        startHour: hr,
+        startHour: timeToDecimal(start),
         duracion: duracionNum,
         potencia: potenciaNum,
       });
@@ -204,11 +243,11 @@ export default function SimuladorScreen() {
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      calcular(selectedDevice, selectedHour, editedDuracion, editedPotencia);
+      calcular(selectedDevice, startTime, endTime, editedPotencia);
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedDevice, selectedHour, editedDuracion, editedPotencia]);
+  }, [selectedDevice, startTime, endTime, editedPotencia]);
 
   const handleProgramar = async () => {
     if (!selectedDevice || !simulacion) return;
@@ -227,12 +266,13 @@ export default function SimuladorScreen() {
         console.warn('No se pudo actualizar la potencia del dispositivo.');
       }
 
-      const duracionNum = toNumber(editedDuracion) || 1;
-      const horaFin = Math.min(24, selectedHour + duracionNum);
+      const horaInicioDecimal = timeToDecimal(startTime);
+      const horaFinDecimal = Math.min(24, timeToDecimal(endTime));
+      const duracionNum = duracionActual;
 
       const res = await crearProgramacion({
-        horaInicio: selectedHour,
-        horaFin,
+        horaInicio: horaInicioDecimal,
+        horaFin: horaFinDecimal,
         duracionHoras: duracionNum,
         potenciaW: potenciaIngresada,
         costeEstimado: parseFloat(simulacion.costeTotalEuros),
@@ -243,15 +283,15 @@ export default function SimuladorScreen() {
         id: res.data.id,
         nombre: selectedDevice.nombre,
         potencia: potenciaIngresada.toString(),
-        duracion: duracionNum.toString(),
-        horaInicio: selectedHour,
+        duracion: duracionNum.toFixed(2),
+        horaInicio: horaInicioDecimal,
         coste: parseFloat(simulacion.costeTotalEuros).toFixed(4),
         kwh: (potenciaIngresada * duracionNum).toFixed(4),
       };
 
       setProgramaciones((prev) => [...prev, nuevaProg]);
 
-      Alert.alert('¡Añadido! ✅', `${selectedDevice.nombre} programado a las ${selectedHour}:00h.`);
+      Alert.alert('¡Añadido! ✅', `${selectedDevice.nombre} programado a las ${formatTime(startTime)}.`);
     } catch (error) {
       Alert.alert('Error', 'No se pudo guardar la programación en el servidor.');
     } finally {
@@ -291,9 +331,7 @@ export default function SimuladorScreen() {
     );
   }
 
-  const duracionActual = toNumber(editedDuracion) || 1;
-  const endHour = Math.min(24, selectedHour + duracionActual);
-  const isPastHour = selectedHour < currentRealHour;
+  const isPastHour = timeToDecimal(startTime) < currentRealHour;
 
   const chartLabels =
     simulacion && simulacion.desglose.length > 0
@@ -328,6 +366,7 @@ export default function SimuladorScreen() {
         >
           <Text style={styles.pageTitle}>Programador Diario</Text>
 
+          {/* ── Card 1: Selección de dispositivo ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>1. Selecciona un electrodoméstico</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel} keyboardShouldPersistTaps="handled">
@@ -357,6 +396,7 @@ export default function SimuladorScreen() {
             </ScrollView>
           </View>
 
+          {/* ── Card 2: Curva de precios + Time pickers ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
 
@@ -395,58 +435,84 @@ export default function SimuladorScreen() {
               </View>
             )}
 
-            <View style={styles.sliderContainer}>
+            {/* Time pickers */}
+            <View style={styles.timePickerContainer}>
               <Text style={styles.sliderLabel}>
-                Franja de uso: <Text style={styles.hourValue}>{selectedHour.toString().padStart(2, '0')}:00h</Text> a{' '}
-                <Text style={styles.hourValue}>{endHour.toString().padStart(2, '0')}:00h</Text>
+                Franja:{' '}
+                <Text style={styles.hourValue}>{formatTime(startTime)}</Text>
+                {' '}→{' '}
+                <Text style={styles.hourValue}>{formatTime(endTime)}</Text>
+                {'  '}
+                <Text style={{ fontSize: 12, color: '#95a5a6' }}>({duracionActual.toFixed(2)}h)</Text>
               </Text>
 
               {isPastHour && (
                 <Text style={styles.pastWarning}>⏳ Estás simulando una hora del pasado.</Text>
               )}
 
-              <View style={styles.multiSliderWrapper}>
-                <MultiSlider
-                  values={[selectedHour, endHour]}
-                  sliderLength={screenWidth - 84}
-                  onValuesChange={(values) => {
-                    setSelectedHour(values[0]);
-                    setEditedDuracion((values[1] - values[0]).toString());
-                  }}
-                  min={0}
-                  max={24}
-                  step={1}
-                  allowOverlap={false}
-                  snapped={true}
-                  minMarkerOverlapDistance={1}
-                  selectedStyle={{ backgroundColor: '#3498db', height: 5 }}
-                  unselectedStyle={{ backgroundColor: '#ecf0f1', height: 5 }}
-                  markerStyle={{
-                    backgroundColor: '#fff',
-                    height: 24,
-                    width: 24,
-                    borderRadius: 12,
-                    borderWidth: 2,
-                    borderColor: '#3498db',
-                    elevation: 3,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.2,
-                    shadowRadius: 2,
-                  }}
-                />
+              <View style={styles.timePickerRow}>
+                <TouchableOpacity
+                  style={styles.timePickerBtn}
+                  onPress={() => setShowStartPicker(true)}
+                >
+                  <Text style={styles.timePickerLabel}>🕐 Inicio</Text>
+                  <Text style={styles.timePickerValue}>{formatTime(startTime)}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.timePickerBtn}
+                  onPress={() => setShowEndPicker(true)}
+                >
+                  <Text style={styles.timePickerLabel}>🕑 Fin</Text>
+                  <Text style={styles.timePickerValue}>{formatTime(endTime)}</Text>
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.sliderTicks}>
-                <Text style={styles.tickText}>00h</Text>
-                <Text style={styles.tickText}>06h</Text>
-                <Text style={styles.tickText}>12h</Text>
-                <Text style={styles.tickText}>18h</Text>
-                <Text style={styles.tickText}>24h</Text>
-              </View>
+              {showStartPicker && (
+                <DateTimePicker
+                  value={startTime}
+                  mode="time"
+                  is24Hour={true}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  minuteInterval={5}
+                  onChange={(_, selected) => {
+                    setShowStartPicker(false);
+                    if (selected) {
+                      // Si la nueva hora inicio es >= hora fin, desplazar fin +1h
+                      if (selected >= endTime) {
+                        const newEnd = new Date(selected.getTime() + 60 * 60 * 1000);
+                        setEndTime(newEnd);
+                      }
+                      setStartTime(selected);
+                    }
+                  }}
+                />
+              )}
+
+              {showEndPicker && (
+                <DateTimePicker
+                  value={endTime}
+                  mode="time"
+                  is24Hour={true}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  minuteInterval={5}
+                  onChange={(_, selected) => {
+                    setShowEndPicker(false);
+                    if (selected) {
+                      // Evitar que fin sea <= inicio
+                      if (selected <= startTime) {
+                        Alert.alert('Hora inválida', 'La hora de fin debe ser posterior a la de inicio.');
+                        return;
+                      }
+                      setEndTime(selected);
+                    }
+                  }}
+                />
+              )}
             </View>
           </View>
 
+          {/* ── Card 3: Ajustes y confirmación ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>3. Ajustes y Confirmación</Text>
             <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
@@ -474,7 +540,7 @@ export default function SimuladorScreen() {
                     <TextInput
                       style={[styles.editInput, { backgroundColor: '#f1f2f6', color: '#95a5a6' }]}
                       editable={false}
-                      value={editedDuracion}
+                      value={duracionActual.toFixed(2)}
                     />
                   </View>
                 </View>
@@ -486,17 +552,9 @@ export default function SimuladorScreen() {
                       esCara ? styles.alertRed : esBarata ? styles.alertGreen : styles.alertYellow,
                     ]}
                   >
-                    {esBarata && (
-                      <Text style={styles.alertTitle}>✅ Hora barata</Text>
-                    )}
-
-                    {esIntermedia && (
-                      <Text style={styles.alertTitle}>🟡 Hora intermedia</Text>
-                    )}
-
-                    {esCara && (
-                      <Text style={styles.alertTitle}>🔴 Hora cara</Text>
-                    )}
+                    {esBarata && <Text style={styles.alertTitle}>✅ Hora barata</Text>}
+                    {esIntermedia && <Text style={styles.alertTitle}>🟡 Hora intermedia</Text>}
+                    {esCara && <Text style={styles.alertTitle}>🔴 Hora cara</Text>}
 
                     {duracionActual > 1 && (
                       <Text style={styles.alertSub}>
@@ -530,7 +588,7 @@ export default function SimuladorScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Lista con indicador lateral personalizado */}
+          {/* ── Card 4: Lista de programaciones ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Usos Programados para Hoy</Text>
             {programaciones.length === 0 ? (
@@ -547,7 +605,7 @@ export default function SimuladorScreen() {
                         <Text style={{ fontWeight: 'normal', fontSize: 12 }}>({prog.potencia} kW)</Text>
                       </Text>
                       <Text style={styles.progTime}>
-                        🕒 {prog.horaInicio}:00h - {prog.duracion}h {'  |  '}
+                        🕒 {decimalToTimeStr(prog.horaInicio)} · {prog.duracion}h{'  |  '}
                         <Text style={{ fontWeight: 'bold', color: '#e74c3c' }}>{prog.coste} €</Text>
                       </Text>
                     </View>
@@ -607,9 +665,10 @@ const styles = StyleSheet.create({
   deviceName: { fontSize: 12, textAlign: 'center', color: '#7f8c8d' },
   deviceNameSelected: { color: '#2980b9', fontWeight: '600' },
   chart: { marginVertical: 8, borderRadius: 16, alignSelf: 'center' },
-  sliderContainer: { marginTop: 10, paddingHorizontal: 5 },
-  sliderLabel: { fontSize: 14, color: '#34495e', textAlign: 'center', marginBottom: 5 },
-  hourValue: { fontWeight: 'bold', color: '#3498db', fontSize: 16 },
+  // Time picker
+  timePickerContainer: { marginTop: 12, paddingHorizontal: 5 },
+  sliderLabel: { fontSize: 14, color: '#34495e', textAlign: 'center', marginBottom: 10 },
+  hourValue: { fontWeight: 'bold', color: '#3498db', fontSize: 15 },
   pastWarning: {
     color: '#e74c3c',
     fontSize: 12,
@@ -617,14 +676,33 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontStyle: 'italic',
   },
-  multiSliderWrapper: { alignItems: 'center' },
-  sliderTicks: {
+  timePickerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 0,
-    marginTop: 5,
+    justifyContent: 'space-around',
+    marginTop: 4,
   },
-  tickText: { fontSize: 10, color: '#bdc3c7', fontWeight: 'bold' },
+  timePickerBtn: {
+    backgroundColor: '#ebf5fb',
+    borderWidth: 1.5,
+    borderColor: '#3498db',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    width: '44%',
+  },
+  timePickerLabel: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  timePickerValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#2980b9',
+  },
+  // Cost & form
   mainCost: {
     fontSize: 32,
     fontWeight: '800',
@@ -672,6 +750,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontStyle: 'italic',
   },
+  // Programaciones list
   progItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
