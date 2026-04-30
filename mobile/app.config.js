@@ -36,7 +36,8 @@ export default {
           icon: "./assets/icon.png",
           color: "#E6F4FE"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"  // ← añadido aquí
     ],
     extra: {
       eas: {

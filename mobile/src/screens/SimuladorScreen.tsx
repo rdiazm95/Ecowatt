@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,11 +20,90 @@ import MultiSlider from '@ptomasroos/react-native-multi-slider';
 import { apiClient } from '../api/client';
 import { getProgramaciones, crearProgramacion, eliminarProgramacion as eliminarProgramacionApi } from '../api/programaciones';
 
-const screenWidth = Dimensions.get('window').width;
 
+
+const screenWidth = Dimensions.get('window').width;
 const MAX_POTENCIA = 999.99;
 
+
+
+// ---------------------------------------------------------------------------
+// Componente reutilizable: ScrollView con indicador lateral personalizado
+// ---------------------------------------------------------------------------
+interface ScrollWithIndicatorProps {
+  children: React.ReactNode;
+  maxHeight: number;
+}
+
+const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, maxHeight }) => {
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [contentHeight, setContentHeight] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(maxHeight);
+
+  const showIndicator = contentHeight > containerHeight;
+
+  const thumbHeight = showIndicator
+    ? Math.max(28, (containerHeight / contentHeight) * containerHeight)
+    : 0;
+
+  const thumbTop = scrollY.interpolate({
+    inputRange: [0, Math.max(1, contentHeight - containerHeight)],
+    outputRange: [0, Math.max(0, containerHeight - thumbHeight)],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <View style={{ maxHeight, flexDirection: 'row' }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        onContentSizeChange={(_, h) => setContentHeight(h)}
+        onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
+      >
+        {children}
+      </ScrollView>
+
+      {showIndicator && (
+        <View style={indicatorStyles.track}>
+          <Animated.View
+            style={[
+              indicatorStyles.thumb,
+              { height: thumbHeight, transform: [{ translateY: thumbTop }] },
+            ]}
+          />
+        </View>
+      )}
+    </View>
+  );
+};
+
+const indicatorStyles = StyleSheet.create({
+  track: {
+    width: 4,
+    backgroundColor: '#ecf0f1',
+    borderRadius: 4,
+    marginLeft: 4,
+    marginVertical: 4,
+    overflow: 'hidden',
+  },
+  thumb: {
+    width: 4,
+    backgroundColor: '#3498db',
+    borderRadius: 4,
+  },
+});
+
+
+
+// ---------------------------------------------------------------------------
 // Normaliza una programación del backend al formato local
+// ---------------------------------------------------------------------------
 const mapProgFromBackend = (p: any) => ({
   id: p.id,
   nombre: p.dispositivo?.nombre ?? '—',
@@ -33,6 +113,8 @@ const mapProgFromBackend = (p: any) => ({
   coste: parseFloat(p.costeEstimado).toFixed(4),
   kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
 });
+
+
 
 export default function SimuladorScreen() {
   const currentRealHour = new Date().getHours();
@@ -139,7 +221,6 @@ export default function SimuladorScreen() {
     setSaving(true);
 
     try {
-      // Actualiza la potencia del dispositivo si el usuario la cambió
       try {
         await apiClient.patch(`/devices/${selectedDevice.id}`, { potencia: potenciaIngresada });
       } catch (apiError) {
@@ -158,7 +239,16 @@ export default function SimuladorScreen() {
         id_dispositivo: selectedDevice.id,
       });
 
-      const nuevaProg = mapProgFromBackend(res.data);
+      const nuevaProg = {
+        id: res.data.id,
+        nombre: selectedDevice.nombre,
+        potencia: potenciaIngresada.toString(),
+        duracion: duracionNum.toString(),
+        horaInicio: selectedHour,
+        coste: parseFloat(simulacion.costeTotalEuros).toFixed(4),
+        kwh: (potenciaIngresada * duracionNum).toFixed(4),
+      };
+
       setProgramaciones((prev) => [...prev, nuevaProg]);
 
       Alert.alert('¡Añadido! ✅', `${selectedDevice.nombre} programado a las ${selectedHour}:00h.`);
@@ -169,13 +259,28 @@ export default function SimuladorScreen() {
     }
   };
 
-  const eliminarProgramacion = async (id: string | number) => {
-    try {
-      await eliminarProgramacionApi(Number(id));
-      setProgramaciones((prev) => prev.filter((p) => p.id !== id && p.id !== Number(id)));
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo eliminar la programación.');
-    }
+  const eliminarProgramacion = (id: string | number) => {
+    Alert.alert(
+      'Eliminar programación',
+      '¿Estás seguro de que deseas eliminar esta programación? Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await eliminarProgramacionApi(Number(id));
+              setProgramaciones((prev) =>
+                prev.filter((p) => p.id !== id && p.id !== Number(id))
+              );
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo eliminar la programación.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading && devices.length === 0) {
@@ -474,6 +579,7 @@ export default function SimuladorScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Lista con indicador lateral personalizado */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Usos Programados para Hoy</Text>
             {programaciones.length === 0 ? (
@@ -481,23 +587,25 @@ export default function SimuladorScreen() {
                 No has programado nada aún. Añade tu primer electrodoméstico arriba.
               </Text>
             ) : (
-              programaciones.map((prog) => (
-                <View key={prog.id} style={styles.progItem}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.progName}>
-                      {prog.nombre}{' '}
-                      <Text style={{ fontWeight: 'normal', fontSize: 12 }}>({prog.potencia} kW)</Text>
-                    </Text>
-                    <Text style={styles.progTime}>
-                      🕒 {prog.horaInicio}:00h - {prog.duracion}h {'  |  '}
-                      <Text style={{ fontWeight: 'bold', color: '#e74c3c' }}>{prog.coste} €</Text>
-                    </Text>
+              <ScrollWithIndicator maxHeight={220}>
+                {programaciones.map((prog) => (
+                  <View key={prog.id} style={styles.progItem}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.progName}>
+                        {prog.nombre}{' '}
+                        <Text style={{ fontWeight: 'normal', fontSize: 12 }}>({prog.potencia} kW)</Text>
+                      </Text>
+                      <Text style={styles.progTime}>
+                        🕒 {prog.horaInicio}:00h - {prog.duracion}h {'  |  '}
+                        <Text style={{ fontWeight: 'bold', color: '#e74c3c' }}>{prog.coste} €</Text>
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.deleteBtn} onPress={() => eliminarProgramacion(prog.id)}>
+                      <Text style={{ fontSize: 20 }}>🗑️</Text>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={styles.deleteBtn} onPress={() => eliminarProgramacion(prog.id)}>
-                    <Text style={{ fontSize: 20 }}>🗑️</Text>
-                  </TouchableOpacity>
-                </View>
-              ))
+                ))}
+              </ScrollWithIndicator>
             )}
           </View>
 
@@ -507,6 +615,8 @@ export default function SimuladorScreen() {
     </SafeAreaView>
   );
 }
+
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
