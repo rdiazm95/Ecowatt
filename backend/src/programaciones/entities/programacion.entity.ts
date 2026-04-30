@@ -13,10 +13,12 @@ export class Programacion {
   @Column({ type: 'date', default: () => 'CURRENT_DATE' })
   fecha: Date;
 
-  @Column({ type: 'smallint', name: 'hora_inicio' })
+  // ↓ Cambiado: smallint → decimal(4,2) para soportar 11.0833 (11:05)
+  @Column({ type: 'decimal', precision: 4, scale: 2, name: 'hora_inicio' })
   horaInicio: number;
 
-  @Column({ type: 'smallint', name: 'hora_fin' })
+  // ↓ Cambiado: smallint → decimal(4,2) para soportar 12.0833 (12:05)
+  @Column({ type: 'decimal', precision: 4, scale: 2, name: 'hora_fin' })
   horaFin: number;
 
   @Column({ type: 'decimal', precision: 4, scale: 2, name: 'duracion_horas' })
