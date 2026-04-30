@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
@@ -9,13 +10,16 @@ import ProfileScreen from '../screens/ProfileScreen';
 import EstadisticasScreen from '../screens/EstadisticasScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 
+
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
 
 // ─── Tab con las pestañas normales ───────────────────────────────────────────
 // Recibe isGuest como prop desde el Stack exterior (no con useRoute)
 function TabScreens({ route }: any) {
   const isGuest = route?.params?.isGuest || false;
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -25,9 +29,9 @@ function TabScreens({ route }: any) {
         tabBarInactiveTintColor: '#95a5a6',
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          height: 68,
+          height: 58 + insets.bottom,
           paddingTop: 8,
-          paddingBottom: 8,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
           backgroundColor: '#ffffff',
           borderTopWidth: 1,
           borderTopColor: '#e8eef3',
@@ -58,7 +62,7 @@ function TabScreens({ route }: any) {
         name="Dashboard"
         component={DashboardScreen}
         options={{ tabBarLabel: 'Hoy' }}
-        initialParams={{ isGuest }} // <-- AÑADIDO: Pasamos la prop isGuest al Dashboard
+        initialParams={{ isGuest }}
       />
 
       {/* El resto solo para usuarios registrados */}
@@ -85,9 +89,9 @@ function TabScreens({ route }: any) {
   );
 }
 
+
 // ─── Stack que envuelve el Tab + pantallas de detalle sin tab bar ─────────────
 export default function TabNavigator({ route }: any) {
-  // Leemos isGuest aquí y lo propagamos a TabScreens via initialParams
   const isGuest = route?.params?.isGuest || false;
 
   return (
