@@ -50,17 +50,21 @@ import { ProgramacionesModule } from './programaciones/programaciones.module';
         
         return {
           transport: {
-            host: configService.get('MAIL_HOST'), // Por ejemplo: smtp.gmail.com
-            port: mailPort,                       // Por ejemplo: 465
-            secure: mailPort === 465,             // Será true si usas el puerto 465 (SSL)
+            host: configService.get('MAIL_HOST'), 
+            port: mailPort,                       
+            secure: mailPort === 465,             
             auth: {
-              user: configService.get('MAIL_USER'),     // Tu correo de ecowatt
-              pass: configService.get('MAIL_PASSWORD'), // Tu contraseña de aplicación
+              user: configService.get('MAIL_USER'),     
+              pass: configService.get('MAIL_PASSWORD'), 
             },
+            // Añadimos los timeouts por seguridad
+            connectionTimeout: 10000, 
+            greetingTimeout: 10000,
+            socketTimeout: 10000,
           },
           defaults: {
-            // Utilizamos la misma variable MAIL_USER para el remitente
-            from: `"Soporte EcoWatt" <${configService.get('MAIL_USER')}>`,
+            // CAMBIO AQUÍ: Ponemos tu correo original a mano para el remitente
+            from: `"Soporte EcoWatt" <ecowatt.proyecto@gmail.com>`,
           },
         };
       },
