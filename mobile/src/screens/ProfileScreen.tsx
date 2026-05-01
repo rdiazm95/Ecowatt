@@ -11,13 +11,15 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { apiClient } from '../api/client';
 import { updateAlertSettings, logout } from '../api/auth';
 
-const MAX_POTENCIA = 999.99; 
+const MAX_POTENCIA = 999.99;
 
 const TIPOS_ELECTRODOMESTICOS = [
   { id: 'lavadora', icon: '👕' },
@@ -27,6 +29,25 @@ const TIPOS_ELECTRODOMESTICOS = [
   { id: 'frigorifico', icon: '❄️' },
   { id: 'tv', icon: '📺' },
 ];
+
+// ─── Avatares preestablecidos ────────────────────────────────────────────────
+const AVATARES = [
+  { id: 'bolt',  emoji: '⚡', label: 'Rayo' },
+  { id: 'leaf',  emoji: '🌿', label: 'Hoja' },
+  { id: 'sun',   emoji: '☀️', label: 'Sol' },
+  { id: 'wind',  emoji: '💨', label: 'Viento' },
+  { id: 'drop',  emoji: '💧', label: 'Agua' },
+  { id: 'fire',  emoji: '🔥', label: 'Fuego' },
+  { id: 'robot', emoji: '🤖', label: 'Robot' },
+  { id: 'house', emoji: '🏠', label: 'Casa' },
+  { id: 'bear',  emoji: '🐻', label: 'Oso' },
+  { id: 'cat',   emoji: '🐱', label: 'Gato' },
+  { id: 'fox',   emoji: '🦊', label: 'Zorro' },
+  { id: 'panda', emoji: '🐼', label: 'Panda' },
+];
+
+const STORAGE_KEY_NAME   = '@ecowatt_display_name';
+const STORAGE_KEY_AVATAR = '@ecowatt_avatar_id';
 
 export default function ProfileScreen({ navigation }: any) {
   const [user, setUser] = useState<any>(null);
@@ -45,13 +66,32 @@ export default function ProfileScreen({ navigation }: any) {
     potencia: '',
   });
 
-  // Validaciones en tiempo real para la potencia
+  // ─── Nombre personalizado ─────────────────────────────────────────────────
+  const [displayName, setDisplayName] = useState('');
+  const [editandoNombre, setEditandoNombre] = useState(false);
+  const [nombreTemporal, setNombreTemporal] = useState('');
+
+  // ─── Avatar ───────────────────────────────────────────────────────────────
+  const [avatarId, setAvatarId] = useState('bolt');
+  const [modalAvatarVisible, setModalAvatarVisible] = useState(false);
+
   const potenciaIngresada = parseFloat(nuevoDispositivo.potencia.replace(',', '.')) || 0;
   const excedePotencia = potenciaIngresada > MAX_POTENCIA;
+  const avatarActual = AVATARES.find(a => a.id === avatarId) ?? AVATARES[0];
 
   useEffect(() => {
     fetchProfileAndDevices();
+    loadLocalPrefs();
   }, []);
+
+  const loadLocalPrefs = async () => {
+    try {
+      const savedName   = await AsyncStorage.getItem(STORAGE_KEY_NAME);
+      const savedAvatar = await AsyncStorage.getItem(STORAGE_KEY_AVATAR);
+      if (savedAvatar) setAvatarId(savedAvatar);
+      if (savedName)   setDisplayName(savedName);
+    } catch (_) {}
+  };
 
   const fetchProfileAndDevices = async () => {
     try {
@@ -72,6 +112,31 @@ export default function ProfileScreen({ navigation }: any) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ─── Guardar nombre local ─────────────────────────────────────────────────
+  const handleGuardarNombre = async () => {
+    const nombre = nombreTemporal.trim();
+    if (!nombre) return;
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY_NAME, nombre);
+      setDisplayName(nombre);
+    } catch (_) {}
+    setEditandoNombre(false);
+  };
+
+  const handleCancelarEdicion = () => {
+    setNombreTemporal('');
+    setEditandoNombre(false);
+  };
+
+  // ─── Guardar avatar local ─────────────────────────────────────────────────
+  const handleSeleccionarAvatar = async (id: string) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY_AVATAR, id);
+      setAvatarId(id);
+    } catch (_) {}
+    setModalAvatarVisible(false);
   };
 
   const handleSaveAlert = async () => {
@@ -123,8 +188,6 @@ export default function ProfileScreen({ navigation }: any) {
       Alert.alert('Error', 'Por favor, rellena todos los campos.');
       return;
     }
-
-    // Comprobación de seguridad antes de llamar a la API
     if (potenciaIngresada <= 0 || excedePotencia) {
       Alert.alert('Error', `La potencia debe estar entre 0.1 y ${MAX_POTENCIA} kW.`);
       return;
@@ -135,14 +198,13 @@ export default function ProfileScreen({ navigation }: any) {
       await apiClient.post('/devices', {
         nombre: nuevoDispositivo.nombre,
         tipo: nuevoDispositivo.tipo,
-        potencia: potenciaIngresada, // Enviamos el valor ya formateado y validado
+        potencia: potenciaIngresada,
         duracion: 1,
       });
 
       setNuevoDispositivo({ nombre: '', tipo: 'lavadora', potencia: '' });
       setMostrarFormulario(false);
       fetchProfileAndDevices();
-
       Alert.alert('Éxito', 'Electrodoméstico creado correctamente.');
     } catch (error) {
       Alert.alert('Error', 'No se pudo añadir el dispositivo.');
@@ -187,25 +249,103 @@ export default function ProfileScreen({ navigation }: any) {
     );
   }
 
-  const iniciales = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
+  const nombreMostrado = displayName || (user?.email ? user.email.split('@')[0] : 'Usuario');
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
+
+      {/* ─── Modal selector de avatar ──────────────────────────────────────── */}
+      <Modal
+        visible={modalAvatarVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalAvatarVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalAvatarVisible(false)}
+        >
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Elige tu avatar</Text>
+            <View style={styles.avatarGrid}>
+              {AVATARES.map(av => (
+                <TouchableOpacity
+                  key={av.id}
+                  style={[
+                    styles.avatarOption,
+                    av.id === avatarId && styles.avatarOptionActive,
+                  ]}
+                  onPress={() => handleSeleccionarAvatar(av.id)}
+                >
+                  <Text style={styles.avatarOptionEmoji}>{av.emoji}</Text>
+                  <Text style={styles.avatarOptionLabel}>{av.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} // MEJORADO para Android
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Añade un pequeño margen extra
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={{ flex: 1 }}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContainer} 
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* ─── HEADER ──────────────────────────────────────────────────────── */}
           <View style={styles.header}>
-            <View style={styles.avatarMock}>
-              <Text style={styles.avatarText}>{iniciales}</Text>
-            </View>
-            <Text style={styles.userName}>{user?.email.split('@')[0]}</Text>
+
+            {/* Avatar pulsable → abre modal */}
+            <TouchableOpacity
+              style={styles.avatarMock}
+              onPress={() => setModalAvatarVisible(true)}
+            >
+              <Text style={styles.avatarEmoji}>{avatarActual.emoji}</Text>
+              <View style={styles.avatarEditBadge}>
+                <Text style={styles.avatarEditBadgeText}>✏️</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Nombre + lápiz */}
+            {editandoNombre ? (
+              <View style={styles.editNameRow}>
+                <TextInput
+                  style={styles.editNameInput}
+                  value={nombreTemporal}
+                  onChangeText={setNombreTemporal}
+                  placeholder={nombreMostrado}
+                  placeholderTextColor="#bdc3c7"
+                  autoFocus
+                  maxLength={30}
+                  returnKeyType="done"
+                  onSubmitEditing={handleGuardarNombre}
+                />
+                <TouchableOpacity onPress={handleGuardarNombre} style={styles.editNameBtn}>
+                  <Text style={styles.editNameBtnText}>✓</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleCancelarEdicion} style={[styles.editNameBtn, styles.editNameBtnCancel]}>
+                  <Text style={styles.editNameBtnText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.nameRow}
+                onPress={() => {
+                  setNombreTemporal(displayName);
+                  setEditandoNombre(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.userName}>{nombreMostrado}</Text>
+                <Text style={styles.pencilIcon}>✏️</Text>
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.userEmail}>{user?.email}</Text>
 
             <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
@@ -213,6 +353,7 @@ export default function ProfileScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
+          {/* ─── ALERTAS ─────────────────────────────────────────────────────── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Alertas de Precio de la Energía</Text>
             <Text style={styles.description}>
@@ -268,6 +409,7 @@ export default function ProfileScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
+          {/* ─── ELECTRODOMÉSTICOS ───────────────────────────────────────────── */}
           <View style={styles.card}>
             <View style={styles.rowBetween}>
               <Text style={styles.sectionTitle}>Mis Electrodomésticos</Text>
@@ -310,16 +452,16 @@ export default function ProfileScreen({ navigation }: any) {
                   value={nuevoDispositivo.potencia}
                   onChangeText={(t) => setNuevoDispositivo({...nuevoDispositivo, potencia: t})}
                 />
-                
+
                 {excedePotencia && (
                   <Text style={{ color: 'red', fontSize: 12, marginTop: 4 }}>
                     Solo puedes introducir una potencia de hasta {MAX_POTENCIA} kW.
                   </Text>
                 )}
 
-                <TouchableOpacity 
-                  style={[styles.primaryButton, excedePotencia && { backgroundColor: '#bdc3c7' }]} 
-                  onPress={handleAddDevice} 
+                <TouchableOpacity
+                  style={[styles.primaryButton, excedePotencia && { backgroundColor: '#bdc3c7' }]}
+                  onPress={handleAddDevice}
                   disabled={adding || excedePotencia}
                 >
                   {adding ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>CREAR ELECTRODOMÉSTICO</Text>}
@@ -335,7 +477,6 @@ export default function ProfileScreen({ navigation }: any) {
                   devices.map((device) => {
                     const iconObj = TIPOS_ELECTRODOMESTICOS.find(t => t.id === device.tipo);
                     const icon = iconObj ? iconObj.icon : '⚡';
-
                     return (
                       <View key={device.id} style={styles.deviceItem}>
                         <Text style={styles.deviceItemIcon}>{icon}</Text>
@@ -354,8 +495,7 @@ export default function ProfileScreen({ navigation }: any) {
             )}
           </View>
 
-          {/* MEJORADO: Espacio vacío extra grande al final para que el Scroll pueda subir por encima del teclado */}
-          <View style={{ height: 100 }} /> 
+          <View style={{ height: 100 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -364,14 +504,73 @@ export default function ProfileScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
-  scrollContainer: { padding: 16, flexGrow: 1 }, 
+  scrollContainer: { padding: 16, flexGrow: 1 },
+
+  // ─── Header ──────────────────────────────────────────────────────────────
   header: { alignItems: 'center', marginBottom: 24, marginTop: 10 },
-  avatarMock: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#3498db', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  avatarText: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
+  avatarMock: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: '#ebf5fb',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 2, borderColor: '#3498db',
+  },
+  avatarEmoji: { fontSize: 44 },
+  avatarEditBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    backgroundColor: '#fff', borderRadius: 12,
+    width: 24, height: 24,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: '#dfe6e9',
+    elevation: 2,
+  },
+  avatarEditBadgeText: { fontSize: 12 },
+
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   userName: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50', textTransform: 'capitalize' },
+  pencilIcon: { fontSize: 16, marginLeft: 4 },
+
+  editNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  editNameInput: {
+    borderBottomWidth: 2, borderBottomColor: '#3498db',
+    fontSize: 20, fontWeight: 'bold', color: '#2c3e50',
+    minWidth: 120, paddingVertical: 2, paddingHorizontal: 4,
+    textTransform: 'capitalize',
+  },
+  editNameBtn: {
+    backgroundColor: '#3498db', borderRadius: 20,
+    width: 30, height: 30, justifyContent: 'center', alignItems: 'center',
+  },
+  editNameBtnCancel: { backgroundColor: '#bdc3c7' },
+  editNameBtnText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+
   userEmail: { fontSize: 14, color: '#7f8c8d', marginTop: 4 },
   logoutButton: { marginTop: 12, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: '#ffeaa7' },
   logoutText: { color: '#d35400', fontWeight: 'bold', fontSize: 12 },
+
+  // ─── Modal avatar ─────────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  modalBox: {
+    backgroundColor: '#fff', borderRadius: 16,
+    padding: 20, width: '85%',
+    elevation: 8,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#2c3e50', marginBottom: 16, textAlign: 'center' },
+  avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  avatarOption: {
+    width: '22%', alignItems: 'center',
+    paddingVertical: 10, borderRadius: 12,
+    borderWidth: 2, borderColor: 'transparent',
+    backgroundColor: '#f8f9fa',
+  },
+  avatarOptionActive: { borderColor: '#3498db', backgroundColor: '#ebf5fb' },
+  avatarOptionEmoji: { fontSize: 32 },
+  avatarOptionLabel: { fontSize: 11, color: '#7f8c8d', marginTop: 4 },
+
+  // ─── Cards y resto ────────────────────────────────────────────────────────
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, color: '#2c3e50' },
   description: { fontSize: 13, color: '#7f8c8d', marginBottom: 16 },

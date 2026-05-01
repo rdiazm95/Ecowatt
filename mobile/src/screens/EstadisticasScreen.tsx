@@ -103,7 +103,6 @@ const calcularTramos = (precios: PrecioHora[], umbral: number): TramosCaro[] => 
   return tramos;
 };
 
-// Carga precios + co2 de un día concreto desde la API
 const cargarDatosDia = async (fecha: string): Promise<DatosDia | null> => {
   try {
     const res = await apiClient.get(`/prices/date/${fecha}`);
@@ -113,7 +112,6 @@ const cargarDatosDia = async (fecha: string): Promise<DatosDia | null> => {
       horaLocal: new Date(p.datetime).getHours(),
       priceKwh: Number(p.valueKwh ?? p.priceKwh ?? 0),
     }));
-    // Extraer carbonFootprint por hora del mismo endpoint
     const co2PorHora: Record<number, number> = {};
     arr.forEach((p: any) => {
       if (p.carbonFootprint != null) {
@@ -205,6 +203,9 @@ export default function EstadisticasScreen() {
 
   const minDate = useMemo(() => getMinDate(), []);
 
+  // ── Booleano de comodidad: indica si el filtro de fecha exacta está activo ──
+  const fechaActiva = filtroFecha !== null;
+
 
   useFocusEffect(
     useCallback(() => {
@@ -212,11 +213,9 @@ export default function EstadisticasScreen() {
         try {
           setLoading(true);
 
-          // 1. Dispositivos
           const resDevices = await apiClient.get('/devices');
           setDevices(resDevices.data);
 
-          // 2. Programaciones
           const resProg = await getProgramaciones();
           const todas = resProg.data.map((p: any) => ({
             id: p.id,
@@ -230,7 +229,6 @@ export default function EstadisticasScreen() {
           }));
           setTodasLasProgramaciones(todas);
 
-          // 3. Dashboard de hoy
           const resDash = await apiClient.get('/dashboard/today');
           const todayISO = formatDateToISO(new Date());
 
@@ -244,7 +242,6 @@ export default function EstadisticasScreen() {
               priceKwh: p.priceKwh,
             }));
 
-            // Cargar co2 de hoy desde /prices/today (tiene carbonFootprint)
             let co2Hoy: Record<number, number> = {};
             try {
               const resPrecios = await apiClient.get('/prices/today');
@@ -273,10 +270,6 @@ export default function EstadisticasScreen() {
   );
 
 
-  // Carga todos los días del rango activo al cambiar período.
-  // IMPORTANTE: no usar datosPorFechaRef como guard para días ya cargados
-  // cuando el periodo es Mensual — siempre recargamos el rango completo
-  // para asegurarnos de tener todos los días, incluso si algunos ya estaban.
   useEffect(() => {
     if (loading) return;
 
@@ -298,8 +291,6 @@ export default function EstadisticasScreen() {
         cur.setDate(cur.getDate() + 1);
       }
 
-      // Si el rango es solo hoy (p.ej. día 1 del mes en Mensual),
-      // no hay nada que cargar pero tampoco mostrar spinner
       if (fechasPendientes.length === 0) return;
 
       setCargandoTramos(true);
@@ -350,19 +341,21 @@ export default function EstadisticasScreen() {
 
   const { desde, hasta } = getDateRange(periodo);
 
-  let programaciones = todasLasProgramaciones.filter(
-    (p) => p.fecha >= desde && p.fecha <= hasta
-  );
-  if (filtroFecha) {
-    const iso = formatDateToISO(filtroFecha);
-    programaciones = programaciones.filter((p) => p.fecha === iso);
-  }
-  if (filtroDispositivoId !== null) {
-    programaciones = programaciones.filter((p) => p.dispositivoId === filtroDispositivoId);
+  // ── FIX PRINCIPAL: cuando hay fecha exacta, ignorar el rango de período ──
+  let programaciones: any[];
+  if (fechaActiva) {
+    const iso = formatDateToISO(filtroFecha!);
+    programaciones = todasLasProgramaciones.filter((p) => p.fecha === iso);
+  } else {
+    programaciones = todasLasProgramaciones.filter(
+      (p) => p.fecha >= desde && p.fecha <= hasta
+    );
+    if (filtroDispositivoId !== null) {
+      programaciones = programaciones.filter((p) => p.dispositivoId === filtroDispositivoId);
+    }
   }
 
 
-  // Tramos caros: guard cargandoTramos para no calcular con datos parciales
   const tramosCaros: TramosCaro[] = useMemo(() => {
     if (cargandoTramos) return [];
 
@@ -411,14 +404,12 @@ export default function EstadisticasScreen() {
   }, [filtroFecha, periodo, datosPorFecha, cargandoTramos]);
 
 
-  // Métricas
   const consumoTotalKwh = programaciones.reduce((acc, prog) => acc + parseFloat(prog.kwh), 0);
   const costeTotalEuros = programaciones.reduce((acc, prog) => acc + parseFloat(prog.coste), 0);
   const costeOptimoEuros = consumoTotalKwh * precioMinimo;
   let ahorroPotencial = costeTotalEuros - costeOptimoEuros;
   if (ahorroPotencial < 0) ahorroPotencial = 0;
 
-  // CO2: usar el factor real del día y hora de cada programación
   const co2Evitado = programaciones.reduce((acc, prog) => {
     const datosDia = datosPorFecha.get(prog.fecha);
     if (!datosDia) return acc;
@@ -462,31 +453,64 @@ export default function EstadisticasScreen() {
 
         {/* ── Tarjeta de filtros ── */}
         <View style={styles.card}>
-          <View style={styles.rowBetween}>
+
+          {/* Aviso cuando la fecha exacta bloquea los demás filtros */}
+          {fechaActiva && (
+            <View style={styles.fechaActivaBanner}>
+              <Text style={styles.fechaActivaText}>
+                📅 Filtro por fecha exacta activo — Período y Electrodoméstico desactivados
+              </Text>
+            </View>
+          )}
+
+          <View style={[styles.rowBetween, fechaActiva && styles.filtrosDesactivados]}>
+            {/* ── Período ── */}
             <View>
-              <Text style={styles.label}>Período</Text>
-              <View style={styles.segmentedControl}>
+              <Text style={[styles.label, fechaActiva && styles.labelDisabled]}>Período</Text>
+              <View style={[styles.segmentedControl, fechaActiva && styles.segmentedControlDisabled]}>
                 {['Diario', 'Semanal', 'Mensual'].map((p) => (
                   <TouchableOpacity
                     key={p}
-                    style={[styles.segmentButton, periodo === p && styles.segmentButtonActive]}
-                    onPress={() => setPeriodo(p)}
+                    style={[
+                      styles.segmentButton,
+                      !fechaActiva && periodo === p && styles.segmentButtonActive,
+                      fechaActiva && styles.segmentButtonDisabled,
+                    ]}
+                    onPress={() => { if (!fechaActiva) setPeriodo(p); }}
+                    disabled={fechaActiva}
                   >
-                    <Text style={[styles.segmentText, periodo === p && styles.segmentTextActive]}>{p}</Text>
+                    <Text style={[
+                      styles.segmentText,
+                      !fechaActiva && periodo === p && styles.segmentTextActive,
+                      fechaActiva && styles.segmentTextDisabled,
+                    ]}>
+                      {p}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
+
+            {/* ── Unidad ── */}
             <View>
-              <Text style={styles.label}>Unidad</Text>
-              <View style={styles.segmentedControl}>
+              <Text style={[styles.label, fechaActiva && styles.labelDisabled]}>Unidad</Text>
+              <View style={[styles.segmentedControl, fechaActiva && styles.segmentedControlDisabled]}>
                 {['KWh', 'Euros'].map((u) => (
                   <TouchableOpacity
                     key={u}
-                    style={[styles.segmentButton, unidad === u && styles.segmentButtonActive]}
-                    onPress={() => setUnidad(u)}
+                    style={[
+                      styles.segmentButton,
+                      !fechaActiva && unidad === u && styles.segmentButtonActive,
+                      fechaActiva && styles.segmentButtonDisabled,
+                    ]}
+                    onPress={() => { if (!fechaActiva) setUnidad(u); }}
+                    disabled={fechaActiva}
                   >
-                    <Text style={[styles.segmentText, unidad === u && styles.segmentTextActive]}>
+                    <Text style={[
+                      styles.segmentText,
+                      !fechaActiva && unidad === u && styles.segmentTextActive,
+                      fechaActiva && styles.segmentTextDisabled,
+                    ]}>
                       {u === 'Euros' ? 'Euros €' : u}
                     </Text>
                   </TouchableOpacity>
@@ -495,25 +519,28 @@ export default function EstadisticasScreen() {
             </View>
           </View>
 
+          {/* ── Electrodoméstico ── */}
           {devices.length > 0 && (
-            <View style={{ marginTop: 14 }}>
-              <Text style={styles.label}>Electrodoméstico</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ marginTop: 14, opacity: fechaActiva ? 0.4 : 1 }}>
+              <Text style={[styles.label, fechaActiva && styles.labelDisabled]}>Electrodoméstico</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={!fechaActiva}>
                 <TouchableOpacity
-                  style={[styles.filterChip, filtroDispositivoId === null && styles.filterChipActive]}
-                  onPress={() => setFiltroDispositivoId(null)}
+                  style={[styles.filterChip, !fechaActiva && filtroDispositivoId === null && styles.filterChipActive]}
+                  onPress={() => { if (!fechaActiva) setFiltroDispositivoId(null); }}
+                  disabled={fechaActiva}
                 >
-                  <Text style={[styles.filterChipText, filtroDispositivoId === null && styles.filterChipTextActive]}>
+                  <Text style={[styles.filterChipText, !fechaActiva && filtroDispositivoId === null && styles.filterChipTextActive]}>
                     Todos
                   </Text>
                 </TouchableOpacity>
                 {devices.map((d) => (
                   <TouchableOpacity
                     key={d.id}
-                    style={[styles.filterChip, filtroDispositivoId === d.id && styles.filterChipActive]}
-                    onPress={() => setFiltroDispositivoId(filtroDispositivoId === d.id ? null : d.id)}
+                    style={[styles.filterChip, !fechaActiva && filtroDispositivoId === d.id && styles.filterChipActive]}
+                    onPress={() => { if (!fechaActiva) setFiltroDispositivoId(filtroDispositivoId === d.id ? null : d.id); }}
+                    disabled={fechaActiva}
                   >
-                    <Text style={[styles.filterChipText, filtroDispositivoId === d.id && styles.filterChipTextActive]}>
+                    <Text style={[styles.filterChipText, !fechaActiva && filtroDispositivoId === d.id && styles.filterChipTextActive]}>
                       {d.nombre}
                     </Text>
                   </TouchableOpacity>
@@ -522,6 +549,7 @@ export default function EstadisticasScreen() {
             </View>
           )}
 
+          {/* ── Fecha exacta ── */}
           <View style={{ marginTop: 14 }}>
             <Text style={styles.label}>Fecha exacta (opcional)</Text>
             <View style={styles.dateRow}>
@@ -574,7 +602,9 @@ export default function EstadisticasScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Consumo Total Programado</Text>
           <Text style={styles.subtitle}>
-            Total en Período {periodo} ({unidad === 'Euros' ? 'Euros €' : 'kWh'})
+            {fechaActiva
+              ? `Día ${filtroFecha!.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}`
+              : `Total en Período ${periodo} (${unidad === 'Euros' ? 'Euros €' : 'kWh'})`}
           </Text>
           <Text style={styles.mainValue}>
             {valorPrincipal.toFixed(2)} {textoUnidadPrincipal}
@@ -660,7 +690,9 @@ export default function EstadisticasScreen() {
             <Text style={styles.sectionTitleOutside}>Desglose de la Lista</Text>
             {programaciones.length === 0 ? (
               <Text style={styles.smallNote}>
-                {filtroDispositivoId !== null || filtroFecha
+                {filtroFecha
+                  ? 'No hay programaciones para este día.'
+                  : filtroDispositivoId !== null
                   ? 'No hay programaciones con los filtros aplicados.'
                   : 'No tienes usos programados. Ve al Simulador para empezar.'}
               </Text>
@@ -713,6 +745,16 @@ const styles = StyleSheet.create({
   sectionTitleOutside: { fontSize: 16, fontWeight: '700', marginBottom: 12, color: '#2c3e50', marginLeft: 4, marginTop: 16 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   label: { fontSize: 12, fontWeight: '600', color: '#7f8c8d', marginBottom: 6 },
+  // ── Estilos de desactivado ──
+  labelDisabled: { color: '#c8cdd2' },
+  filtrosDesactivados: { opacity: 0.45 },
+  segmentedControlDisabled: { backgroundColor: '#f0f2f4' },
+  segmentButtonDisabled: { backgroundColor: 'transparent' },
+  segmentTextDisabled: { color: '#c8cdd2' },
+  // ── Banner de fecha activa ──
+  fechaActivaBanner: { backgroundColor: '#eaf4fb', borderRadius: 8, padding: 8, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#3498db' },
+  fechaActivaText: { fontSize: 11, color: '#2471a3', fontWeight: '600', lineHeight: 16 },
+  // ── Resto de estilos (sin cambios) ──
   segmentedControl: { flexDirection: 'row', backgroundColor: '#ecf0f1', borderRadius: 8, padding: 2 },
   segmentButton: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 },
   segmentButtonActive: { backgroundColor: '#3498db' },
