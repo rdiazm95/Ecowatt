@@ -5,7 +5,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { MailerModule } from '@nestjs-modules/mailer';
 
 import { PricesModule } from './prices/prices.module';
-import { EsiosService } from './esios/esios.service';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -80,6 +79,6 @@ import { ProgramacionesModule } from './programaciones/programaciones.module';
     NotificationsModule,
     ProgramacionesModule,
   ],
-  providers: [EsiosService],
+  
 })
 export class AppModule {}

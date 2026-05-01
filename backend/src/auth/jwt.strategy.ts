@@ -9,7 +9,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // Le decimos que el token vendrá en la cabecera (Header) como un Bearer Token
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      // IMPORTANTE: Debe ser EXACTAMENTE la misma clave que pusimos en auth.module.ts
+      // IMPORTANTE: Debe ser EXACTAMENTE la misma clave que pusimos en auth.module.ts, la real se guarda en render
       secretOrKey: process.env.JWT_SECRET || 'mi_clave_secreta_super_segura_ecowatt',
     });
   }

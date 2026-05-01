@@ -10,7 +10,7 @@ import { JwtStrategy } from './jwt.strategy'; // <-- 1. Importamos la estrategia
     UsersModule,
     JwtModule.register({
       global: true,
-      secret: process.env.JWT_SECRET || 'mi_clave_secreta_super_segura_ecowatt',
+      secret: process.env.JWT_SECRET || 'mi_clave_secreta_super_segura_ecowatt', // <-- ESTA CLAVE DEBE SER EXACTAMENTE LA MISMA QUE EN jwt.strategy.ts la real se guarda en render
       signOptions: { expiresIn: '7d' },
     }),
   ],
