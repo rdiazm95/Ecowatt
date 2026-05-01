@@ -21,10 +21,8 @@ import { apiClient } from '../api/client';
 import { getProgramaciones, crearProgramacion, eliminarProgramacion as eliminarProgramacionApi } from '../api/programaciones';
 
 
-
 const screenWidth = Dimensions.get('window').width;
 const MAX_POTENCIA = 999.99;
-
 
 
 // ---------------------------------------------------------------------------
@@ -47,6 +45,13 @@ const decimalToTimeStr = (decimal: number): string => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}h`;
 };
 
+// ✅ NUEVO: igual que en EstadisticasScreen
+const formatDuracion = (horas: number): string => {
+  const h = Math.floor(horas);
+  const min = Math.round((horas - h) * 60);
+  if (min === 0) return `${h}h`;
+  return `${h}h ${min}min`;
+};
 
 
 // ---------------------------------------------------------------------------
@@ -122,20 +127,20 @@ const indicatorStyles = StyleSheet.create({
 });
 
 
-
 // ---------------------------------------------------------------------------
 // Normaliza una programación del backend al formato local
+// ✅ CAMBIO: horaFin calculada, duracion como número (no string)
 // ---------------------------------------------------------------------------
 const mapProgFromBackend = (p: any) => ({
   id: p.id,
   nombre: p.dispositivo?.nombre ?? '—',
   potencia: parseFloat(p.potenciaW).toString(),
-  duracion: parseFloat(p.duracionHoras).toFixed(2),
+  duracion: parseFloat(p.duracionHoras),                                   // ✅ número, no .toFixed(2)
   horaInicio: parseFloat(p.horaInicio),
+  horaFin: parseFloat(p.horaInicio) + parseFloat(p.duracionHoras),        // ✅ añadido horaFin
   coste: parseFloat(p.costeEstimado).toFixed(4),
   kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
 });
-
 
 
 export default function SimuladorScreen() {
@@ -205,7 +210,6 @@ export default function SimuladorScreen() {
   useEffect(() => {
     if (selectedDevice) {
       setEditedPotencia(selectedDevice.potencia.toString());
-      // Si el dispositivo tiene duración por defecto, ajustar la hora fin
       if (selectedDevice.duracion) {
         const dur = parseFloat(selectedDevice.duracion);
         const newEnd = new Date(startTime.getTime() + dur * 60 * 60 * 1000);
@@ -279,12 +283,14 @@ export default function SimuladorScreen() {
         id_dispositivo: selectedDevice.id,
       });
 
+      // ✅ CAMBIO: horaFin añadida, duracion como número
       const nuevaProg = {
         id: res.data.id,
         nombre: selectedDevice.nombre,
         potencia: potenciaIngresada.toString(),
-        duracion: duracionNum.toFixed(2),
+        duracion: duracionNum,                                              // ✅ número
         horaInicio: horaInicioDecimal,
+        horaFin: horaFinDecimal,                                           // ✅ añadido
         coste: parseFloat(simulacion.costeTotalEuros).toFixed(4),
         kwh: (potenciaIngresada * duracionNum).toFixed(4),
       };
@@ -343,14 +349,12 @@ export default function SimuladorScreen() {
       ? simulacion.desglose.map((d: any) => toNumber(d.costeFranja))
       : [0];
 
-  // ── Clasificación de franja ──────────────────────────────────────────────
   const franjaActual = simulacion?.recomendacion?.franja || '';
   const esCara = franjaActual.includes('CARA');
   const esBarata = franjaActual.includes('BARATA');
   const esIntermedia = !!simulacion?.recomendacion && !esCara && !esBarata;
 
   const etiquetaFranja = esCara ? 'cara' : esBarata ? 'barata' : 'intermedia';
-  // ────────────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -443,11 +447,19 @@ export default function SimuladorScreen() {
                 {' '}→{' '}
                 <Text style={styles.hourValue}>{formatTime(endTime)}</Text>
                 {'  '}
-                <Text style={{ fontSize: 12, color: '#95a5a6' }}>({duracionActual.toFixed(2)}h)</Text>
+                <Text style={{ fontSize: 12, color: '#95a5a6' }}>({formatDuracion(duracionActual)})</Text>
               </Text>
 
+              {/* ✅ CAMBIO: mensaje más descriptivo */}
               {isPastHour && (
-                <Text style={styles.pastWarning}>⏳ Estás simulando una hora del pasado.</Text>
+                <View style={styles.pastWarningBox}>
+                  <Text style={styles.pastWarning}>
+                    🕰️ El periodo programado incluye horas que ya han pasado.
+                  </Text>
+                  <Text style={styles.pastWarningSub}>
+                    Puedes continuar, y el sistema contabilizará el consumo de esas horas previas.
+                  </Text>
+                </View>
               )}
 
               <View style={styles.timePickerRow}>
@@ -478,7 +490,6 @@ export default function SimuladorScreen() {
                   onChange={(_, selected) => {
                     setShowStartPicker(false);
                     if (selected) {
-                      // Si la nueva hora inicio es >= hora fin, desplazar fin +1h
                       if (selected >= endTime) {
                         const newEnd = new Date(selected.getTime() + 60 * 60 * 1000);
                         setEndTime(newEnd);
@@ -499,7 +510,6 @@ export default function SimuladorScreen() {
                   onChange={(_, selected) => {
                     setShowEndPicker(false);
                     if (selected) {
-                      // Evitar que fin sea <= inicio
                       if (selected <= startTime) {
                         Alert.alert('Hora inválida', 'La hora de fin debe ser posterior a la de inicio.');
                         return;
@@ -536,11 +546,12 @@ export default function SimuladorScreen() {
                   </View>
 
                   <View style={styles.editInputGroup}>
-                    <Text style={styles.editLabel}>Duración (h)</Text>
+                    {/* ✅ CAMBIO: label sin "(h)" y valor con formatDuracion */}
+                    <Text style={styles.editLabel}>Duración</Text>
                     <TextInput
                       style={[styles.editInput, { backgroundColor: '#f1f2f6', color: '#95a5a6' }]}
                       editable={false}
-                      value={duracionActual.toFixed(2)}
+                      value={formatDuracion(duracionActual)}
                     />
                   </View>
                 </View>
@@ -597,6 +608,7 @@ export default function SimuladorScreen() {
               </Text>
             ) : (
               <ScrollWithIndicator maxHeight={220}>
+                {/* ✅ CAMBIO: muestra horaFin y formatDuracion, mismo estilo que EstadisticasScreen */}
                 {programaciones.map((prog) => (
                   <View key={prog.id} style={styles.progItem}>
                     <View style={{ flex: 1 }}>
@@ -604,9 +616,15 @@ export default function SimuladorScreen() {
                         {prog.nombre}{' '}
                         <Text style={{ fontWeight: 'normal', fontSize: 12 }}>({prog.potencia} kW)</Text>
                       </Text>
-                      <Text style={styles.progTime}>
-                        🕒 {decimalToTimeStr(prog.horaInicio)} · {prog.duracion}h{'  |  '}
+                      <View style={styles.progHorarioRow}>
+                        <Text style={styles.progTime}>
+                          🕐 {decimalToTimeStr(prog.horaInicio)} – {decimalToTimeStr(prog.horaFin)}
+                        </Text>
+                        <Text style={styles.progDuracion}>⏱ {formatDuracion(prog.duracion)}</Text>
+                      </View>
+                      <Text style={[styles.progTime, { marginTop: 2 }]}>
                         <Text style={{ fontWeight: 'bold', color: '#e74c3c' }}>{prog.coste} €</Text>
+                        {'  ·  '}{prog.kwh} kWh
                       </Text>
                     </View>
                     <TouchableOpacity style={styles.deleteBtn} onPress={() => eliminarProgramacion(prog.id)}>
@@ -624,7 +642,6 @@ export default function SimuladorScreen() {
     </SafeAreaView>
   );
 }
-
 
 
 const styles = StyleSheet.create({
@@ -669,11 +686,25 @@ const styles = StyleSheet.create({
   timePickerContainer: { marginTop: 12, paddingHorizontal: 5 },
   sliderLabel: { fontSize: 14, color: '#34495e', textAlign: 'center', marginBottom: 10 },
   hourValue: { fontWeight: 'bold', color: '#3498db', fontSize: 15 },
-  pastWarning: {
-    color: '#e74c3c',
-    fontSize: 12,
-    textAlign: 'center',
+  // ✅ NUEVO: contenedor del aviso de hora pasada
+  pastWarningBox: {
+    backgroundColor: '#fdf2e9',
+    borderLeftWidth: 3,
+    borderLeftColor: '#e67e22',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     marginBottom: 10,
+  },
+  pastWarning: {
+    color: '#d35400',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pastWarningSub: {
+    color: '#e67e22',
+    fontSize: 11,
+    marginTop: 2,
     fontStyle: 'italic',
   },
   timePickerRow: {
@@ -760,7 +791,15 @@ const styles = StyleSheet.create({
     borderBottomColor: '#ecf0f1',
   },
   progName: { fontWeight: 'bold', color: '#2c3e50', fontSize: 15 },
-  progTime: { color: '#7f8c8d', fontSize: 13, marginTop: 4 },
+  // ✅ NUEVO: fila de horario con hora fin y duración
+  progHorarioRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  progTime: { color: '#7f8c8d', fontSize: 13 },
+  progDuracion: { fontSize: 12, color: '#7f8c8d' },
   emptyText: { fontStyle: 'italic', color: '#95a5a6', textAlign: 'center', marginTop: 10 },
   deleteBtn: { padding: 10, backgroundColor: '#fdf2e9', borderRadius: 8 },
 });
