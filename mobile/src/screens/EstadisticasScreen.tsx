@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,37 +16,127 @@ import { apiClient } from '../api/client';
 import { getProgramaciones } from '../api/programaciones';
 
 
+const formatFechaDisplay = (isoDate: string): string => {
+  const [year, month, day] = isoDate.split('-');
+  return `${day}-${month}-${year}`;
+};
 
-// ---------------------------------------------------------------------------
-// Componente: ScrollView con indicador lateral personalizado
-// ---------------------------------------------------------------------------
+const formatDuracion = (horas: number): string => {
+  const h = Math.floor(horas);
+  const min = Math.round((horas - h) * 60);
+  if (min === 0) return `${h}h`;
+  return `${h}h ${min}min`;
+};
+
+const formatDateToISO = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const getDateRange = (periodo: string): { desde: string; hasta: string } => {
+  const hoy = new Date();
+  const hasta = formatDateToISO(hoy);
+  if (periodo === 'Diario') {
+    return { desde: hasta, hasta };
+  } else if (periodo === 'Semanal') {
+    const diaSemana = hoy.getDay();
+    const diasDesdeElLunes = diaSemana === 0 ? 6 : diaSemana - 1;
+    const lunes = new Date(hoy);
+    lunes.setDate(hoy.getDate() - diasDesdeElLunes);
+    return { desde: formatDateToISO(lunes), hasta };
+  } else {
+    const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    return { desde: formatDateToISO(primero), hasta };
+  }
+};
+
+const getMinDate = (): Date => {
+  const d = new Date();
+  d.setDate(d.getDate() - 29);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+
+interface PrecioHora {
+  horaLocal: number;
+  priceKwh: number;
+}
+
+interface DatosDia {
+  precios: PrecioHora[];
+  avg: number;
+}
+
+interface TramosCaro {
+  horaInicio: number;
+  horaFin: number;
+  precioMax: number;
+}
+
+const calcularTramos = (precios: PrecioHora[], umbral: number): TramosCaro[] => {
+  if (precios.length === 0) return [];
+  const caras = precios
+    .filter((p) => p.priceKwh > umbral)
+    .sort((a, b) => a.horaLocal - b.horaLocal);
+  if (caras.length === 0) return [];
+  const tramos: TramosCaro[] = [];
+  let tramoActual: TramosCaro = {
+    horaInicio: caras[0].horaLocal,
+    horaFin: caras[0].horaLocal + 1,
+    precioMax: caras[0].priceKwh,
+  };
+  for (let i = 1; i < caras.length; i++) {
+    const h = caras[i].horaLocal;
+    if (h === tramoActual.horaFin) {
+      tramoActual.horaFin = h + 1;
+      tramoActual.precioMax = Math.max(tramoActual.precioMax, caras[i].priceKwh);
+    } else {
+      tramos.push({ ...tramoActual });
+      tramoActual = { horaInicio: h, horaFin: h + 1, precioMax: caras[i].priceKwh };
+    }
+  }
+  tramos.push(tramoActual);
+  return tramos;
+};
+
+const cargarDatosDia = async (fecha: string): Promise<DatosDia | null> => {
+  try {
+    const res = await apiClient.get(`/prices/date/${fecha}`);
+    const arr: any[] = res.data?.data ?? res.data ?? [];
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const precios: PrecioHora[] = arr.map((p: any) => ({
+      horaLocal: new Date(p.datetime).getUTCHours(),
+      priceKwh: Number(p.valueKwh ?? p.priceKwh ?? 0),
+    }));
+    const avg = precios.reduce((s, p) => s + p.priceKwh, 0) / precios.length;
+    return { precios, avg };
+  } catch {
+    return null;
+  }
+};
+
+
 interface ScrollWithIndicatorProps {
   children: React.ReactNode;
   maxHeight: number;
 }
 
-
 const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, maxHeight }) => {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(maxHeight);
-
-
   const showIndicator = contentHeight > containerHeight;
-
-
   const thumbHeight = showIndicator
     ? Math.max(28, (containerHeight / contentHeight) * containerHeight)
     : 0;
-
-
   const thumbTop = scrollY.interpolate({
     inputRange: [0, Math.max(1, contentHeight - containerHeight)],
     outputRange: [0, Math.max(0, containerHeight - thumbHeight)],
     extrapolate: 'clamp',
   });
-
-
   return (
     <View style={{ maxHeight, flexDirection: 'row' }}>
       <ScrollView
@@ -63,15 +153,10 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
       >
         {children}
       </ScrollView>
-
-
       {showIndicator && (
         <View style={indicatorStyles.track}>
           <Animated.View
-            style={[
-              indicatorStyles.thumb,
-              { height: thumbHeight, transform: [{ translateY: thumbTop }] },
-            ]}
+            style={[indicatorStyles.thumb, { height: thumbHeight, transform: [{ translateY: thumbTop }] }]}
           />
         </View>
       )}
@@ -79,79 +164,38 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
   );
 };
 
-
 const indicatorStyles = StyleSheet.create({
-  track: {
-    width: 4,
-    backgroundColor: '#ecf0f1',
-    borderRadius: 4,
-    marginLeft: 6,
-    marginVertical: 2,
-    overflow: 'hidden',
-  },
-  thumb: {
-    width: 4,
-    backgroundColor: '#3498db',
-    borderRadius: 4,
-  },
+  track: { width: 4, backgroundColor: '#ecf0f1', borderRadius: 4, marginLeft: 6, marginVertical: 2, overflow: 'hidden' },
+  thumb: { width: 4, backgroundColor: '#3498db', borderRadius: 4 },
 });
 
 
-
-// ---------------------------------------------------------------------------
-// Helper: rango de fechas por período
-// ---------------------------------------------------------------------------
-const formatDateToISO = (date: Date): string => date.toISOString().split('T')[0];
-
-
-const getDateRange = (periodo: string): { desde: string; hasta: string } => {
-  const hoy = new Date();
-  const hasta = formatDateToISO(hoy);
-
-
-  if (periodo === 'Diario') {
-    return { desde: hasta, hasta };
-  } else if (periodo === 'Semanal') {
-    const diaSemana = hoy.getDay();
-    const diasDesdeElLunes = diaSemana === 0 ? 6 : diaSemana - 1;
-    const lunes = new Date(hoy);
-    lunes.setDate(hoy.getDate() - diasDesdeElLunes);
-    return { desde: formatDateToISO(lunes), hasta };
-  } else {
-    const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    return { desde: formatDateToISO(primero), hasta };
-  }
-};
-
-
-
-// ---------------------------------------------------------------------------
-// Pantalla principal
-// ---------------------------------------------------------------------------
 export default function EstadisticasScreen() {
   const [periodo, setPeriodo] = useState('Diario');
   const [unidad, setUnidad] = useState('Euros');
   const [todasLasProgramaciones, setTodasLasProgramaciones] = useState<any[]>([]);
-  const [precioMedio, setPrecioMedio] = useState(0.15);
   const [precioMinimo, setPrecioMinimo] = useState(0.10);
-  
-  // NUEVOS ESTADOS PARA DATOS DINÁMICOS
-  const [horasPico, setHorasPico] = useState<any[]>([]);
-  const [huellaCarbonoMedia, setHuellaCarbonoMedia] = useState<number>(250); // 250 gCO2eq/kWh por defecto
-  // ✅ CAMBIO 1: Nuevo estado — mapa de CO2 por hora del día { hora: gCO2/kWh }
+
+  const [datosPorFecha, setDatosPorFecha] = useState<Map<string, DatosDia>>(new Map());
+  const datosPorFechaRef = useRef<Map<string, DatosDia>>(new Map());
+
+  const actualizarDatosFecha = useCallback((fecha: string, datos: DatosDia) => {
+    datosPorFechaRef.current = new Map(datosPorFechaRef.current).set(fecha, datos);
+    setDatosPorFecha(new Map(datosPorFechaRef.current));
+  }, []);
+
   const [co2PorHora, setCo2PorHora] = useState<Record<number, number>>({});
-
-
   const [loading, setLoading] = useState(true);
+  const [cargandoTramos, setCargandoTramos] = useState(false);
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
 
-
-  // Filtros
   const [devices, setDevices] = useState<any[]>([]);
   const [filtroDispositivoId, setFiltroDispositivoId] = useState<number | null>(null);
   const [filtroFecha, setFiltroFecha] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [fechaFueraDeRango, setFechaFueraDeRango] = useState(false);
 
+  const minDate = useMemo(() => getMinDate(), []);
 
 
   useFocusEffect(
@@ -160,13 +204,11 @@ export default function EstadisticasScreen() {
         try {
           setLoading(true);
 
-
-          // 1. Obtener dispositivos
+          // 1. Dispositivos
           const resDevices = await apiClient.get('/devices');
           setDevices(resDevices.data);
 
-
-          // 2. Obtener programaciones
+          // 2. Programaciones
           const resProg = await getProgramaciones();
           const todas = resProg.data.map((p: any) => ({
             id: p.id,
@@ -180,50 +222,38 @@ export default function EstadisticasScreen() {
           }));
           setTodasLasProgramaciones(todas);
 
-
-          // 3. Obtener Dashboard general (precios)
+          // 3. Dashboard de hoy
           const resDash = await apiClient.get('/dashboard/today');
+          const todayISO = formatDateToISO(new Date());
+
           if (resDash.data?.today) {
-            setPrecioMedio(resDash.data.today.avg);
             setPrecioMinimo(resDash.data.today.min);
+            const avgServidor: number = resDash.data.today.avg;
+            const todayPrices: { hour: number; priceKwh: number }[] =
+              resDash.data.today.prices ?? [];
+            const preciosHoy: PrecioHora[] = todayPrices.map((p) => ({
+              horaLocal: p.hour,
+              priceKwh: p.priceKwh,
+            }));
+            actualizarDatosFecha(todayISO, { precios: preciosHoy, avg: avgServidor });
           }
 
-
-          // 4. Obtener Horas Pico Dinámicas
-          try {
-            const resPico = await apiClient.get('/prices/horas-pico');
-            if (resPico.data) {
-              setHorasPico(resPico.data);
-            }
-          } catch (e) {
-            console.warn('No se pudieron cargar las horas pico');
-          }
-
-
-          // 5. Obtener Huella de Carbono del día
+          // 5. Huella de carbono
           try {
             const resPrecios = await apiClient.get('/prices/today');
-            if (resPrecios.data && resPrecios.data.length > 0) {
-              const preciosConCo2 = resPrecios.data.filter((p: any) => p.carbonFootprint != null);
-              if (preciosConCo2.length > 0) {
-                // ✅ CAMBIO 2: Además de la media global (fallback), construimos el mapa hora → CO2
-                const mediaCo2 =
-                  preciosConCo2.reduce((acc: number, p: any) => acc + Number(p.carbonFootprint), 0) /
-                  preciosConCo2.length;
-                setHuellaCarbonoMedia(mediaCo2);
-
-                const mapa: Record<number, number> = {};
-                preciosConCo2.forEach((p: any) => {
-                  const hora = new Date(p.datetime).getUTCHours();
-                  mapa[hora] = Number(p.carbonFootprint);
-                });
-                setCo2PorHora(mapa);
-              }
+            const preciosArray: any[] = resPrecios.data?.data ?? [];
+            const preciosConCo2 = preciosArray.filter((p: any) => p.carbonFootprint != null);
+            if (preciosConCo2.length > 0) {
+              const mapa: Record<number, number> = {};
+              preciosConCo2.forEach((p: any) => {
+                const hora = new Date(p.datetime).getUTCHours();
+                mapa[hora] = Number(p.carbonFootprint);
+              });
+              setCo2PorHora(mapa);
             }
           } catch (e) {
             console.warn('No se pudo cargar la huella de carbono');
           }
-
 
         } catch (error) {
           console.error('Error cargando estadísticas:', error);
@@ -232,15 +262,90 @@ export default function EstadisticasScreen() {
         }
       };
 
-
       fetchData();
     }, [])
   );
 
 
+  // ---------------------------------------------------------------------------
+  // Carga todos los días del rango activo al cambiar período
+  // (sin requerir programaciones — los tramos caros son independientes)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (loading) return;
 
+    const cargarRangoPeriodo = async () => {
+      const { desde, hasta } = getDateRange(periodo);
+      const todayISO = formatDateToISO(new Date());
+
+      const fechasPendientes: string[] = [];
+      const cur = new Date(desde + 'T00:00:00');
+      const end = new Date(hasta + 'T00:00:00');
+
+      while (cur <= end) {
+        const iso = formatDateToISO(cur);
+        if (iso !== todayISO && !datosPorFechaRef.current.has(iso)) {
+          fechasPendientes.push(iso);
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      if (fechasPendientes.length === 0) return;
+
+      setCargandoTramos(true);
+      const resultados = await Promise.allSettled(
+        fechasPendientes.map((f) => cargarDatosDia(f))
+      );
+      resultados.forEach((res, i) => {
+        if (res.status === 'fulfilled' && res.value) {
+          actualizarDatosFecha(fechasPendientes[i], res.value);
+        }
+      });
+      setCargandoTramos(false);
+    };
+
+    cargarRangoPeriodo();
+  }, [periodo, loading, actualizarDatosFecha]);
+
+
+  // ---------------------------------------------------------------------------
+  // FIX 2+3: Carga lazy al seleccionar fecha — normaliza a medianoche local
+  // ---------------------------------------------------------------------------
+  const handleFiltroFechaChange = useCallback(async (fecha: Date | null) => {
+    if (!fecha) {
+      setFiltroFecha(null);
+      setFechaFueraDeRango(false);
+      return;
+    }
+    const fechaNormalizada = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+    const iso = formatDateToISO(fechaNormalizada);
+    const minISO = formatDateToISO(minDate);
+    const todayISO = formatDateToISO(new Date());
+
+    if (iso < minISO) {
+      setFiltroFecha(fechaNormalizada);
+      setFechaFueraDeRango(true);
+      return;
+    }
+
+    setFechaFueraDeRango(false);
+    setFiltroFecha(fechaNormalizada);
+
+    if (iso === todayISO) return;
+    if (datosPorFechaRef.current.has(iso)) return;
+
+    setCargandoTramos(true);
+    const datos = await cargarDatosDia(iso);
+    if (datos) actualizarDatosFecha(iso, datos);
+    setCargandoTramos(false);
+  }, [actualizarDatosFecha, minDate]);
+
+
+  // ---------------------------------------------------------------------------
   // Filtrado en memoria
+  // ---------------------------------------------------------------------------
   const { desde, hasta } = getDateRange(periodo);
+
   let programaciones = todasLasProgramaciones.filter(
     (p) => p.fecha >= desde && p.fecha <= hasta
   );
@@ -253,40 +358,86 @@ export default function EstadisticasScreen() {
   }
 
 
+  // ---------------------------------------------------------------------------
+  // Tramos caros
+  // ---------------------------------------------------------------------------
+  const tramosCaros: TramosCaro[] = useMemo(() => {
+    let fechasActivas: string[];
+    if (filtroFecha) {
+      fechasActivas = [formatDateToISO(filtroFecha)];
+    } else if (periodo === 'Diario') {
+      fechasActivas = [formatDateToISO(new Date())];
+    } else {
+      const { desde: d, hasta: h } = getDateRange(periodo);
+      fechasActivas = [...datosPorFecha.keys()].filter((f) => f >= d && f <= h);
+      if (fechasActivas.length === 0) return [];
+    }
 
+    if (fechasActivas.length === 1) {
+      const datos = datosPorFecha.get(fechasActivas[0]);
+      if (!datos) return [];
+      return calcularTramos(datos.precios, datos.avg);
+    }
+
+    const acumPrecios: Record<number, { sum: number; count: number }> = {};
+    let sumAvg = 0;
+    let countAvg = 0;
+
+    fechasActivas.forEach((fecha) => {
+      const datos = datosPorFecha.get(fecha);
+      if (!datos) return;
+      sumAvg += datos.avg;
+      countAvg += 1;
+      datos.precios.forEach(({ horaLocal, priceKwh }) => {
+        if (!acumPrecios[horaLocal]) acumPrecios[horaLocal] = { sum: 0, count: 0 };
+        acumPrecios[horaLocal].sum += priceKwh;
+        acumPrecios[horaLocal].count += 1;
+      });
+    });
+
+    if (countAvg === 0) return [];
+
+    const preciosPromedio: PrecioHora[] = Object.entries(acumPrecios).map(([h, v]) => ({
+      horaLocal: Number(h),
+      priceKwh: v.sum / v.count,
+    }));
+    const avgPromedio = sumAvg / countAvg;
+
+    return calcularTramos(preciosPromedio, avgPromedio);
+  }, [filtroFecha, periodo, datosPorFecha]);
+
+
+  // ---------------------------------------------------------------------------
+  // Métricas
+  // ---------------------------------------------------------------------------
   const consumoTotalKwh = programaciones.reduce((acc, prog) => acc + parseFloat(prog.kwh), 0);
   const costeTotalEuros = programaciones.reduce((acc, prog) => acc + parseFloat(prog.coste), 0);
   const costeOptimoEuros = consumoTotalKwh * precioMinimo;
-  
   let ahorroPotencial = costeTotalEuros - costeOptimoEuros;
   if (ahorroPotencial < 0) ahorroPotencial = 0;
 
-
-  // ✅ CAMBIO 3: CO2 calculado hora a hora usando el mapa de ESIOS.
-  // Por cada programación, se usa el factor CO2 de su hora de inicio.
-  // Si esa hora no tiene dato (ESIOS no devolvió ese slot), se usa la media como fallback.
   const co2Evitado = programaciones.reduce((acc, prog) => {
     const hora = Math.floor(prog.horaInicio) % 24;
-    const factorCo2 = co2PorHora[hora] ?? huellaCarbonoMedia;
+    const factorCo2 = co2PorHora[hora] ?? 0;
     const kwhProg = parseFloat(prog.kwh);
-    return acc + (kwhProg * factorCo2) / 1000; // gramos → kg
+    return acc + (kwhProg * factorCo2) / 1000;
   }, 0);
-
 
   const valorPrincipal = unidad === 'Euros' ? costeTotalEuros : consumoTotalKwh;
   const valorSecundario = unidad === 'Euros' ? consumoTotalKwh : costeTotalEuros;
   const textoUnidadPrincipal = unidad === 'Euros' ? '€' : 'kWh';
   const textoUnidadSecundaria = unidad === 'Euros' ? 'kWh' : '€';
 
-
+  const etiquetaTramos = filtroFecha
+    ? filtroFecha.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
+    : periodo === 'Diario' ? 'hoy'
+    : periodo === 'Semanal' ? 'esta semana'
+    : 'este mes';
 
   const onDateChange = (event: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
-    if (event.type === 'set' && date) {
-      setFiltroFecha(date);
-    }
+    if (event.type === 'set' && date) handleFiltroFechaChange(date);
   };
-
 
 
   if (loading && todasLasProgramaciones.length === 0) {
@@ -299,12 +450,10 @@ export default function EstadisticasScreen() {
   }
 
 
-
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.pageTitle}>EcoWatt - Estadísticas</Text>
-
 
         {/* ── Tarjeta de filtros ── */}
         <View style={styles.card}>
@@ -323,8 +472,6 @@ export default function EstadisticasScreen() {
                 ))}
               </View>
             </View>
-
-
             <View>
               <Text style={styles.label}>Unidad</Text>
               <View style={styles.segmentedControl}>
@@ -342,7 +489,6 @@ export default function EstadisticasScreen() {
               </View>
             </View>
           </View>
-
 
           {devices.length > 0 && (
             <View style={{ marginTop: 14 }}>
@@ -371,34 +517,31 @@ export default function EstadisticasScreen() {
             </View>
           )}
 
-
           <View style={{ marginTop: 14 }}>
             <Text style={styles.label}>Fecha exacta (opcional)</Text>
             <View style={styles.dateRow}>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
-              >
+              <TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
                 <Text style={styles.dateButtonIcon}>📅</Text>
                 <Text style={[styles.dateButtonText, filtroFecha && styles.dateButtonTextActive]}>
                   {filtroFecha
-                    ? filtroFecha.toLocaleDateString('es-ES', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric',
-                      })
+                    ? filtroFecha.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })
                     : 'Seleccionar día'}
                 </Text>
               </TouchableOpacity>
-
-
               {filtroFecha && (
-                <TouchableOpacity style={styles.clearBtn} onPress={() => setFiltroFecha(null)}>
+                <TouchableOpacity style={styles.clearBtn} onPress={() => handleFiltroFechaChange(null)}>
                   <Text style={styles.clearBtnText}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
 
+            {fechaFueraDeRango && (
+              <View style={styles.warningBanner}>
+                <Text style={styles.warningText}>
+                  ⚠️ Solo hay datos disponibles para los últimos 30 días. No hay precios para esta fecha.
+                </Text>
+              </View>
+            )}
 
             {showDatePicker && (
               <View>
@@ -406,16 +549,14 @@ export default function EstadisticasScreen() {
                   value={filtroFecha ?? new Date()}
                   mode="date"
                   display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+                  minimumDate={minDate}
                   maximumDate={new Date()}
                   locale="es-ES"
                   onChange={onDateChange}
                   style={{ marginTop: 8 }}
                 />
                 {Platform.OS === 'ios' && (
-                  <TouchableOpacity
-                    style={styles.iosCloseBtn}
-                    onPress={() => setShowDatePicker(false)}
-                  >
+                  <TouchableOpacity style={styles.iosCloseBtn} onPress={() => setShowDatePicker(false)}>
                     <Text style={styles.iosCloseBtnText}>Confirmar fecha</Text>
                   </TouchableOpacity>
                 )}
@@ -423,8 +564,6 @@ export default function EstadisticasScreen() {
             )}
           </View>
         </View>
-
-
 
         {/* ── Consumo total ── */}
         <View style={styles.card}>
@@ -440,32 +579,36 @@ export default function EstadisticasScreen() {
           </Text>
         </View>
 
-
-
-        {/* ── Horas pico DINÁMICAS ── */}
+        {/* ── Tramos más caros ── */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>Horas Pico de Uso de la Red</Text>
-            <Text style={styles.smallNote}>Franjas más caras hoy</Text>
+            <Text style={styles.sectionTitle}>Tramos más caros</Text>
+            <Text style={styles.smallNote}>Precio alto {etiquetaTramos}</Text>
           </View>
-          
-          {horasPico.length > 0 ? (
-            horasPico.map((pico, index) => {
-              const date = new Date(pico.datetime);
-              const horaInicio = date.getHours().toString().padStart(2, '0');
-              const horaFin = (date.getHours() + 1).toString().padStart(2, '0');
+          {fechaFueraDeRango ? (
+            <Text style={styles.smallNote}>Sin datos para esta fecha (fuera de los 30 días disponibles)</Text>
+          ) : cargandoTramos ? (
+            <View style={styles.tramosLoadingRow}>
+              <ActivityIndicator size="small" color="#3498db" />
+              <Text style={[styles.smallNote, { marginLeft: 8 }]}>Cargando precios del período...</Text>
+            </View>
+          ) : tramosCaros.length > 0 ? (
+            tramosCaros.map((tramo, index) => {
+              const hi = String(tramo.horaInicio).padStart(2, '0');
+              const hf = String(tramo.horaFin % 24).padStart(2, '0');
               return (
-                <Text key={index} style={styles.peakText}>
-                  {index + 1}. {horaInicio}:00h - {horaFin}:00h ({Number(pico.valueKwh).toFixed(3)} €/kWh)
-                </Text>
+                <View key={index} style={styles.tramoRow}>
+                  <View style={styles.tramoBadge}>
+                    <Text style={styles.tramoBadgeText}>{hi}:00 – {hf}:00</Text>
+                  </View>
+                  <Text style={styles.tramoPrecio}>hasta {tramo.precioMax.toFixed(3)} €/kWh</Text>
+                </View>
               );
             })
           ) : (
-            <Text style={styles.smallNote}>No se han podido cargar las horas pico.</Text>
+            <Text style={styles.smallNote}>No hay datos de precios para este período.</Text>
           )}
         </View>
-
-
 
         {/* ── Comparación ahorro ── */}
         <Text style={styles.sectionTitleOutside}>Comparación de Ahorro (Euros €)</Text>
@@ -486,8 +629,6 @@ export default function EstadisticasScreen() {
           </View>
         </View>
 
-
-
         {/* ── Sostenibilidad ── */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Huella de Carbono y Sostenibilidad</Text>
@@ -502,8 +643,6 @@ export default function EstadisticasScreen() {
           </View>
         </View>
 
-
-
         {/* ── Desglose por aparato ── */}
         <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarDetalles(!mostrarDetalles)}>
           <Text style={styles.buttonText}>
@@ -511,12 +650,9 @@ export default function EstadisticasScreen() {
           </Text>
         </TouchableOpacity>
 
-
         {mostrarDetalles && (
           <View style={styles.detallesContainer}>
             <Text style={styles.sectionTitleOutside}>Desglose de la Lista</Text>
-
-
             {programaciones.length === 0 ? (
               <Text style={styles.smallNote}>
                 {filtroDispositivoId !== null || filtroFecha
@@ -526,25 +662,24 @@ export default function EstadisticasScreen() {
             ) : (
               <ScrollWithIndicator maxHeight={320}>
                 {programaciones.map((prog) => {
-                  const totalTime = prog.horaInicio + prog.duracion;
-                  const endHour = Math.floor(totalTime) % 24;
-                  const endMinutes = Math.round((totalTime % 1) * 60);
-
-
-                  const startH = String(prog.horaInicio).padStart(2, '0');
-                  const endH = String(endHour).padStart(2, '0');
-                  const endM = String(endMinutes).padStart(2, '0');
-
-
+                  const startH = Math.floor(prog.horaInicio);
+                  const startMin = Math.round((prog.horaInicio - startH) * 60);
+                  const startStr = `${String(startH).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`;
+                  const endDecimal = prog.horaInicio + prog.duracion;
+                  const endH = Math.floor(endDecimal) % 24;
+                  const endMin = Math.round((endDecimal % 1) * 60);
+                  const endStr = `${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+                  const duracionStr = formatDuracion(prog.duracion);
+                  const fechaDisplay = formatFechaDisplay(prog.fecha);
                   return (
                     <View key={prog.id} style={styles.detalleCard}>
-                      <Text style={styles.detalleName}>
-                        {prog.nombre}{' '}
-                        <Text style={{ fontWeight: 'normal', fontSize: 13 }}>
-                          ({prog.fecha} · {startH}:00h - {endH}:{endM}h)
-                        </Text>
-                      </Text>
-                      <View style={styles.rowBetween}>
+                      <Text style={styles.detalleName}>{prog.nombre}</Text>
+                      <Text style={styles.detalleFecha}>{fechaDisplay}</Text>
+                      <View style={styles.detalleHorarioRow}>
+                        <Text style={styles.detalleHorario}>🕐 {startStr} – {endStr}</Text>
+                        <Text style={styles.detalleDuracion}>⏱ {duracionStr}</Text>
+                      </View>
+                      <View style={[styles.rowBetween, { marginTop: 6 }]}>
                         <Text style={styles.detalleInfo}>{parseFloat(prog.kwh).toFixed(2)} kWh</Text>
                         <Text style={styles.detalleCoste}>{parseFloat(prog.coste).toFixed(2)} €</Text>
                       </View>
@@ -556,13 +691,11 @@ export default function EstadisticasScreen() {
           </View>
         )}
 
-
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
-
 
 
 const styles = StyleSheet.create({
@@ -584,7 +717,11 @@ const styles = StyleSheet.create({
   mainValue: { fontSize: 32, fontWeight: '800', color: '#2c3e50', textAlign: 'center', marginVertical: 4 },
   subValue: { fontSize: 13, color: '#95a5a6', textAlign: 'center' },
   smallNote: { fontSize: 12, color: '#95a5a6' },
-  peakText: { fontSize: 14, color: '#34495e', marginBottom: 6, fontWeight: '500' },
+  tramosLoadingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  tramoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  tramoBadge: { backgroundColor: '#fdecea', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20, borderWidth: 1, borderColor: '#f5c6c6' },
+  tramoBadgeText: { fontSize: 13, fontWeight: '700', color: '#e74c3c' },
+  tramoPrecio: { fontSize: 13, color: '#7f8c8d', fontWeight: '500' },
   cardHeader: { fontSize: 13, fontWeight: '600', color: '#7f8c8d', textAlign: 'center', marginBottom: 8 },
   cardDescription: { fontSize: 11, color: '#95a5a6', textAlign: 'center', marginTop: 8 },
   ecoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
@@ -595,7 +732,11 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   detallesContainer: { marginTop: 10 },
   detalleCard: { backgroundColor: '#fff', borderRadius: 8, padding: 12, marginBottom: 8, borderLeftWidth: 4, borderLeftColor: '#3498db', elevation: 1 },
-  detalleName: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50', marginBottom: 4 },
+  detalleName: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50', marginBottom: 2 },
+  detalleFecha: { fontSize: 12, color: '#95a5a6', marginBottom: 6 },
+  detalleHorarioRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  detalleHorario: { fontSize: 13, color: '#34495e', fontWeight: '600' },
+  detalleDuracion: { fontSize: 12, color: '#7f8c8d' },
   detalleInfo: { fontSize: 14, color: '#7f8c8d' },
   detalleCoste: { fontSize: 15, fontWeight: 'bold', color: '#e74c3c' },
   filterChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: '#ecf0f1', marginRight: 8, borderWidth: 1, borderColor: '#dde1e7' },
@@ -611,4 +752,6 @@ const styles = StyleSheet.create({
   clearBtnText: { color: '#e74c3c', fontWeight: '700', fontSize: 14 },
   iosCloseBtn: { marginTop: 10, backgroundColor: '#3498db', borderRadius: 8, padding: 12, alignItems: 'center' },
   iosCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  warningBanner: { marginTop: 8, backgroundColor: '#fff3cd', borderRadius: 8, padding: 10, borderLeftWidth: 3, borderLeftColor: '#f39c12' },
+  warningText: { fontSize: 12, color: '#856404', lineHeight: 18 },
 });
