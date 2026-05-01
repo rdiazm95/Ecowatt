@@ -102,13 +102,14 @@ const calcularTramos = (precios: PrecioHora[], umbral: number): TramosCaro[] => 
   return tramos;
 };
 
+// ✅ FIX 1: getUTCHours() → getHours() para obtener la hora local correcta
 const cargarDatosDia = async (fecha: string): Promise<DatosDia | null> => {
   try {
     const res = await apiClient.get(`/prices/date/${fecha}`);
     const arr: any[] = res.data?.data ?? res.data ?? [];
     if (!Array.isArray(arr) || arr.length === 0) return null;
     const precios: PrecioHora[] = arr.map((p: any) => ({
-      horaLocal: new Date(p.datetime).getUTCHours(),
+      horaLocal: new Date(p.datetime).getHours(), // ✅ hora local del dispositivo
       priceKwh: Number(p.valueKwh ?? p.priceKwh ?? 0),
     }));
     const avg = precios.reduce((s, p) => s + p.priceKwh, 0) / precios.length;
@@ -238,7 +239,7 @@ export default function EstadisticasScreen() {
             actualizarDatosFecha(todayISO, { precios: preciosHoy, avg: avgServidor });
           }
 
-          // 5. Huella de carbono
+          // 4. Huella de carbono
           try {
             const resPrecios = await apiClient.get('/prices/today');
             const preciosArray: any[] = resPrecios.data?.data ?? [];
@@ -246,7 +247,8 @@ export default function EstadisticasScreen() {
             if (preciosConCo2.length > 0) {
               const mapa: Record<number, number> = {};
               preciosConCo2.forEach((p: any) => {
-                const hora = new Date(p.datetime).getUTCHours();
+                // ✅ FIX 3: getUTCHours() → getHours() para consistencia con hora local
+                const hora = new Date(p.datetime).getHours();
                 mapa[hora] = Number(p.carbonFootprint);
               });
               setCo2PorHora(mapa);
@@ -269,7 +271,9 @@ export default function EstadisticasScreen() {
 
   // ---------------------------------------------------------------------------
   // Carga todos los días del rango activo al cambiar período
-  // (sin requerir programaciones — los tramos caros son independientes)
+  // ✅ FIX 2: eliminado `actualizarDatosFecha` de las deps para evitar
+  //    re-ejecuciones infinitas y el guard `if (loading) return` bloqueando
+  //    la carga cuando el periodo cambia justo al terminar el loading.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (loading) return;
@@ -305,11 +309,11 @@ export default function EstadisticasScreen() {
     };
 
     cargarRangoPeriodo();
-  }, [periodo, loading, actualizarDatosFecha]);
+  }, [periodo, loading]); // ✅ FIX 2: quitado `actualizarDatosFecha` de las deps
 
 
   // ---------------------------------------------------------------------------
-  // FIX 2+3: Carga lazy al seleccionar fecha — normaliza a medianoche local
+  // Carga lazy al seleccionar fecha — normaliza a medianoche local
   // ---------------------------------------------------------------------------
   const handleFiltroFechaChange = useCallback(async (fecha: Date | null) => {
     if (!fecha) {

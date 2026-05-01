@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { PricesService } from './prices.service';
 
 @Controller('prices')
@@ -26,12 +26,20 @@ export class PricesController {
   }
 
   // ─────────────────────────────────────────
-  // Horas pico del día (las 4 franjas más caras)
+  // Precios por fecha como path param
+  // Usado por EstadisticasScreen para cargar tramos caros de días anteriores
+  // Ejemplo: GET /prices/date/2026-04-28
   // ─────────────────────────────────────────
-  @Get('horas-pico')
-  async getHorasPico() {
-    const horasPico = await this.pricesService.getHorasPicoHoy();
-    return horasPico;
+  @Get('date/:fecha')
+  async getPricesByDateParam(@Param('fecha') fecha: string) {
+    const date = new Date(fecha + 'T00:00:00Z');
+    const prices = await this.pricesService.getPricesByDate(date);
+    return {
+      success: true,
+      data: prices,
+      date: fecha,
+      count: prices.length,
+    };
   }
 
   // ─────────────────────────────────────────
