@@ -1,15 +1,21 @@
-import { Injectable, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { 
+  Injectable, 
+  UnauthorizedException, 
+  BadRequestException, 
+  NotFoundException, 
+  InternalServerErrorException // <-- Añadido para manejar el error del servidor de correo
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { MailerService } from '@nestjs-modules/mailer'; // <-- Añadido el servicio de correos
+import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-    private mailerService: MailerService, // <-- Inyectamos el servicio
+    private mailerService: MailerService,
   ) {}
 
   async register(email: string, pass: string) {
@@ -85,22 +91,27 @@ export class AuthService {
     // 3. Guardar el código y la fecha en la base de datos
     await this.usersService.saveResetToken(user.id, resetCode, expires);
 
-    // 4. Enviar el correo usando la plantilla HTML
-    await this.mailerService.sendMail({
-      to: user.email,
-      subject: 'Recuperación de contraseña - EcoWatt',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #2c3e50; text-align: center;">Recuperación de contraseña</h2>
-          <p>Hola,</p>
-          <p>Has solicitado restablecer tu contraseña en EcoWatt. Usa el siguiente código de 6 dígitos en tu aplicación para crear una nueva contraseña:</p>
-          <div style="background-color: #ebf5fb; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
-            <h1 style="color: #3498db; letter-spacing: 5px; margin: 0;">${resetCode}</h1>
+    // 4. Enviar el correo usando la plantilla HTML con manejo de errores
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Recuperación de contraseña - EcoWatt',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+            <h2 style="color: #2c3e50; text-align: center;">Recuperación de contraseña</h2>
+            <p>Hola,</p>
+            <p>Has solicitado restablecer tu contraseña en EcoWatt. Usa el siguiente código de 6 dígitos en tu aplicación para crear una nueva contraseña:</p>
+            <div style="background-color: #ebf5fb; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
+              <h1 style="color: #3498db; letter-spacing: 5px; margin: 0;">${resetCode}</h1>
+            </div>
+            <p style="color: #7f8c8d; font-size: 12px; text-align: center;">Este código caducará en 15 minutos. Si no has solicitado esto, ignora este correo y tu contraseña seguirá siendo la misma.</p>
           </div>
-          <p style="color: #7f8c8d; font-size: 12px; text-align: center;">Este código caducará en 15 minutos. Si no has solicitado esto, ignora este correo y tu contraseña seguirá siendo la misma.</p>
-        </div>
-      `,
-    });
+        `,
+      });
+    } catch (error) {
+      console.error('Error al enviar el correo de recuperación:', error);
+      throw new InternalServerErrorException('No se pudo conectar con el servidor de correo. Inténtalo de nuevo más tarde.');
+    }
 
     return { message: 'Correo de recuperación enviado con éxito' };
   }

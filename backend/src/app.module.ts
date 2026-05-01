@@ -41,23 +41,29 @@ import { ProgramacionesModule } from './programaciones/programaciones.module';
       inject: [ConfigService],
     }),
 
-    // Configuración de Correos (Gmail)
+    // Configuración de Correos leída desde las variables de entorno de Render
     MailerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        transport: {
-          host: 'smtp.gmail.com',
-          port: 587,
-          secure: false,
-          auth: {
-            user: 'ecowatt.proyecto@gmail.com',
-            pass: configService.get('MAIL_PASSWORD'),
+      useFactory: async (configService: ConfigService) => {
+        // Convertimos el puerto a número
+        const mailPort = Number(configService.get('MAIL_PORT'));
+        
+        return {
+          transport: {
+            host: configService.get('MAIL_HOST'), // Por ejemplo: smtp.gmail.com
+            port: mailPort,                       // Por ejemplo: 465
+            secure: mailPort === 465,             // Será true si usas el puerto 465 (SSL)
+            auth: {
+              user: configService.get('MAIL_USER'),     // Tu correo de ecowatt
+              pass: configService.get('MAIL_PASSWORD'), // Tu contraseña de aplicación
+            },
           },
-        },
-        defaults: {
-          from: '"Soporte EcoWatt" <ecowatt.proyecto@gmail.com>',
-        },
-      }),
+          defaults: {
+            // Utilizamos la misma variable MAIL_USER para el remitente
+            from: `"Soporte EcoWatt" <${configService.get('MAIL_USER')}>`,
+          },
+        };
+      },
       inject: [ConfigService],
     }),
 
