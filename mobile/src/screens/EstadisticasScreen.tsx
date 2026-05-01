@@ -68,6 +68,7 @@ interface PrecioHora {
 interface DatosDia {
   precios: PrecioHora[];
   avg: number;
+  co2PorHora: Record<number, number>;
 }
 
 interface TramosCaro {
@@ -102,18 +103,25 @@ const calcularTramos = (precios: PrecioHora[], umbral: number): TramosCaro[] => 
   return tramos;
 };
 
-// ✅ FIX 1: getUTCHours() → getHours() para obtener la hora local correcta
+// Carga precios + co2 de un día concreto desde la API
 const cargarDatosDia = async (fecha: string): Promise<DatosDia | null> => {
   try {
     const res = await apiClient.get(`/prices/date/${fecha}`);
     const arr: any[] = res.data?.data ?? res.data ?? [];
     if (!Array.isArray(arr) || arr.length === 0) return null;
     const precios: PrecioHora[] = arr.map((p: any) => ({
-      horaLocal: new Date(p.datetime).getHours(), // ✅ hora local del dispositivo
+      horaLocal: new Date(p.datetime).getHours(),
       priceKwh: Number(p.valueKwh ?? p.priceKwh ?? 0),
     }));
+    // Extraer carbonFootprint por hora del mismo endpoint
+    const co2PorHora: Record<number, number> = {};
+    arr.forEach((p: any) => {
+      if (p.carbonFootprint != null) {
+        co2PorHora[new Date(p.datetime).getHours()] = Number(p.carbonFootprint);
+      }
+    });
     const avg = precios.reduce((s, p) => s + p.priceKwh, 0) / precios.length;
-    return { precios, avg };
+    return { precios, avg, co2PorHora };
   } catch {
     return null;
   }
@@ -185,7 +193,6 @@ export default function EstadisticasScreen() {
     setDatosPorFecha(new Map(datosPorFechaRef.current));
   }, []);
 
-  const [co2PorHora, setCo2PorHora] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [cargandoTramos, setCargandoTramos] = useState(false);
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
@@ -236,25 +243,22 @@ export default function EstadisticasScreen() {
               horaLocal: p.hour,
               priceKwh: p.priceKwh,
             }));
-            actualizarDatosFecha(todayISO, { precios: preciosHoy, avg: avgServidor });
-          }
 
-          // 4. Huella de carbono
-          try {
-            const resPrecios = await apiClient.get('/prices/today');
-            const preciosArray: any[] = resPrecios.data?.data ?? [];
-            const preciosConCo2 = preciosArray.filter((p: any) => p.carbonFootprint != null);
-            if (preciosConCo2.length > 0) {
-              const mapa: Record<number, number> = {};
-              preciosConCo2.forEach((p: any) => {
-                // ✅ FIX 3: getUTCHours() → getHours() para consistencia con hora local
-                const hora = new Date(p.datetime).getHours();
-                mapa[hora] = Number(p.carbonFootprint);
+            // Cargar co2 de hoy desde /prices/today (tiene carbonFootprint)
+            let co2Hoy: Record<number, number> = {};
+            try {
+              const resPrecios = await apiClient.get('/prices/today');
+              const preciosArray: any[] = resPrecios.data?.data ?? [];
+              preciosArray.forEach((p: any) => {
+                if (p.carbonFootprint != null) {
+                  co2Hoy[new Date(p.datetime).getHours()] = Number(p.carbonFootprint);
+                }
               });
-              setCo2PorHora(mapa);
+            } catch {
+              console.warn('No se pudo cargar carbonFootprint de hoy');
             }
-          } catch (e) {
-            console.warn('No se pudo cargar la huella de carbono');
+
+            actualizarDatosFecha(todayISO, { precios: preciosHoy, avg: avgServidor, co2PorHora: co2Hoy });
           }
 
         } catch (error) {
@@ -269,12 +273,10 @@ export default function EstadisticasScreen() {
   );
 
 
-  // ---------------------------------------------------------------------------
-  // Carga todos los días del rango activo al cambiar período
-  // ✅ FIX 2: eliminado `actualizarDatosFecha` de las deps para evitar
-  //    re-ejecuciones infinitas y el guard `if (loading) return` bloqueando
-  //    la carga cuando el periodo cambia justo al terminar el loading.
-  // ---------------------------------------------------------------------------
+  // Carga todos los días del rango activo al cambiar período.
+  // IMPORTANTE: no usar datosPorFechaRef como guard para días ya cargados
+  // cuando el periodo es Mensual — siempre recargamos el rango completo
+  // para asegurarnos de tener todos los días, incluso si algunos ya estaban.
   useEffect(() => {
     if (loading) return;
 
@@ -282,18 +284,22 @@ export default function EstadisticasScreen() {
       const { desde, hasta } = getDateRange(periodo);
       const todayISO = formatDateToISO(new Date());
 
+      const todasLasFechasDelRango: string[] = [];
       const fechasPendientes: string[] = [];
       const cur = new Date(desde + 'T00:00:00');
       const end = new Date(hasta + 'T00:00:00');
 
       while (cur <= end) {
         const iso = formatDateToISO(cur);
+        todasLasFechasDelRango.push(iso);
         if (iso !== todayISO && !datosPorFechaRef.current.has(iso)) {
           fechasPendientes.push(iso);
         }
         cur.setDate(cur.getDate() + 1);
       }
 
+      // Si el rango es solo hoy (p.ej. día 1 del mes en Mensual),
+      // no hay nada que cargar pero tampoco mostrar spinner
       if (fechasPendientes.length === 0) return;
 
       setCargandoTramos(true);
@@ -309,12 +315,9 @@ export default function EstadisticasScreen() {
     };
 
     cargarRangoPeriodo();
-  }, [periodo, loading]); // ✅ FIX 2: quitado `actualizarDatosFecha` de las deps
+  }, [periodo, loading]);
 
 
-  // ---------------------------------------------------------------------------
-  // Carga lazy al seleccionar fecha — normaliza a medianoche local
-  // ---------------------------------------------------------------------------
   const handleFiltroFechaChange = useCallback(async (fecha: Date | null) => {
     if (!fecha) {
       setFiltroFecha(null);
@@ -345,9 +348,6 @@ export default function EstadisticasScreen() {
   }, [actualizarDatosFecha, minDate]);
 
 
-  // ---------------------------------------------------------------------------
-  // Filtrado en memoria
-  // ---------------------------------------------------------------------------
   const { desde, hasta } = getDateRange(periodo);
 
   let programaciones = todasLasProgramaciones.filter(
@@ -362,10 +362,10 @@ export default function EstadisticasScreen() {
   }
 
 
-  // ---------------------------------------------------------------------------
-  // Tramos caros
-  // ---------------------------------------------------------------------------
+  // Tramos caros: guard cargandoTramos para no calcular con datos parciales
   const tramosCaros: TramosCaro[] = useMemo(() => {
+    if (cargandoTramos) return [];
+
     let fechasActivas: string[];
     if (filtroFecha) {
       fechasActivas = [formatDateToISO(filtroFecha)];
@@ -408,21 +408,22 @@ export default function EstadisticasScreen() {
     const avgPromedio = sumAvg / countAvg;
 
     return calcularTramos(preciosPromedio, avgPromedio);
-  }, [filtroFecha, periodo, datosPorFecha]);
+  }, [filtroFecha, periodo, datosPorFecha, cargandoTramos]);
 
 
-  // ---------------------------------------------------------------------------
   // Métricas
-  // ---------------------------------------------------------------------------
   const consumoTotalKwh = programaciones.reduce((acc, prog) => acc + parseFloat(prog.kwh), 0);
   const costeTotalEuros = programaciones.reduce((acc, prog) => acc + parseFloat(prog.coste), 0);
   const costeOptimoEuros = consumoTotalKwh * precioMinimo;
   let ahorroPotencial = costeTotalEuros - costeOptimoEuros;
   if (ahorroPotencial < 0) ahorroPotencial = 0;
 
+  // CO2: usar el factor real del día y hora de cada programación
   const co2Evitado = programaciones.reduce((acc, prog) => {
+    const datosDia = datosPorFecha.get(prog.fecha);
+    if (!datosDia) return acc;
     const hora = Math.floor(prog.horaInicio) % 24;
-    const factorCo2 = co2PorHora[hora] ?? 0;
+    const factorCo2 = datosDia.co2PorHora[hora] ?? 0;
     const kwhProg = parseFloat(prog.kwh);
     return acc + (kwhProg * factorCo2) / 1000;
   }, 0);
