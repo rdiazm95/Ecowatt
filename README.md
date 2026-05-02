@@ -61,7 +61,7 @@ A través de la integración con los precios oficiales de la luz (**PVPC vía AP
 ---
 
 ## 📂 Estructura del repositorio
-
+```text
 ecowatt/
 ├── backend/ # Servidor NestJS
 │ └── src/
@@ -83,6 +83,7 @@ ecowatt/
 └── docker-compose.yml # Entorno de desarrollo local (opcional)
 
 
+```
 ---
 
 ## ⚙️ Configuración e instalación
