@@ -152,22 +152,6 @@ export class PricesService {
 
     return results;
   }
-
-  // ─────────────────────────────────────────
-  // HORAS PICO DEL DÍA (NUEVO)
-  // ─────────────────────────────────────────
-  async getHorasPicoHoy(): Promise<Price[]> {
-    const todayPrices = await this.getTodayPrices();
-    if (!todayPrices || todayPrices.length === 0) return [];
-
-    // Ordenamos de mayor a menor precio y cogemos las 4 horas más caras
-    const sortedByPrice = [...todayPrices].sort((a, b) => Number(b.valueKwh) - Number(a.valueKwh));
-    const top4 = sortedByPrice.slice(0, 4);
-
-    // Las devolvemos ordenadas cronológicamente para que se muestren bien en la app
-    return top4.sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
-  }
-
   // ─────────────────────────────────────────
   // ARRANQUE
   // ─────────────────────────────────────────
