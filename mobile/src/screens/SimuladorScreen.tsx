@@ -135,11 +135,11 @@ const mapProgFromBackend = (p: any) => ({
   id: p.id,
   nombre: p.dispositivo?.nombre ?? '—',
   potencia: parseFloat(p.potenciaW).toString(),
-  duracion: parseFloat(p.duracionHoras),                                   // ✅ número, no .toFixed(2)
+  duracion: parseFloat(p.duracionHoras),                                   
   horaInicio: parseFloat(p.horaInicio),
-  horaFin: parseFloat(p.horaInicio) + parseFloat(p.duracionHoras),        // ✅ añadido horaFin
-  coste: parseFloat(p.costeEstimado).toFixed(4),
-  kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(4),
+  horaFin: parseFloat(p.horaInicio) + parseFloat(p.duracionHoras),        
+  coste: parseFloat(p.costeEstimado).toFixed(2),
+  kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(2),
 });
 
 
@@ -291,8 +291,8 @@ export default function SimuladorScreen() {
         duracion: duracionNum,                                              // ✅ número
         horaInicio: horaInicioDecimal,
         horaFin: horaFinDecimal,                                           // ✅ añadido
-        coste: parseFloat(simulacion.costeTotalEuros).toFixed(4),
-        kwh: (potenciaIngresada * duracionNum).toFixed(4),
+        coste: parseFloat(simulacion.costeTotalEuros).toFixed(2),
+        kwh: (potenciaIngresada * duracionNum).toFixed(2),
       };
 
       setProgramaciones((prev) => [...prev, nuevaProg]);
