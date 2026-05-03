@@ -52,7 +52,7 @@ export class DevicesService {
     // ── Propagar potencia a programaciones existentes ──────────────────────
     // Device.potencia está en kW; Programacion.potenciaW está en W
     if (updateData.potencia !== undefined) {
-      const nuevaPotenciaW = Number(updateData.potencia) * 1000;
+      const nuevaPotenciaW = Number(updateData.potencia);
       await this.programacionRepository
         .createQueryBuilder()
         .update(Programacion)
