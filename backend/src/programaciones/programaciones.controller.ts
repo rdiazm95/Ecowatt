@@ -4,21 +4,26 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ProgramacionesService } from './programaciones.service';
+import { CreateProgramacionDto } from './dto/create-programacion.dto';
+
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('programaciones')
 export class ProgramacionesController {
   constructor(private readonly service: ProgramacionesService) {}
 
+
   @Post()
-  crear(@Request() req, @Body() dto: any) {
+  crear(@Request() req, @Body() dto: CreateProgramacionDto) {
     return this.service.crear(req.user.id, dto);
   }
+
 
   @Get()
   getMias(@Request() req) {
     return this.service.findByUsuario(req.user.id);
   }
+
 
   @Delete(':id')
   eliminar(@Request() req, @Param('id') id: string) {

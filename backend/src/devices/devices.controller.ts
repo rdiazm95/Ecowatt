@@ -1,19 +1,24 @@
 import { Controller, Get, Post, Body, Param, Delete, Patch, UseGuards, Request } from '@nestjs/common';
 import { DevicesService } from './devices.service';
 import { AuthGuard } from '@nestjs/passport';
+import { CreateDeviceDto } from './dto/create-device.dto';
+import { UpdateDeviceDto } from './dto/update-device.dto';
+
 
 @UseGuards(AuthGuard('jwt')) // ¡CERRADURA PARA TODAS LAS RUTAS DE ESTE ARCHIVO!
 @Controller('devices')
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
 
+
   // Endpoint para guardar un nuevo electrodoméstico
   @Post()
-  create(@Body() createDeviceDto: any, @Request() req) {
+  create(@Body() createDeviceDto: CreateDeviceDto, @Request() req) {
     // Extraemos el ID del usuario directamente del Token JWT (super seguro)
     const userId = req.user.id;
     return this.devicesService.create(createDeviceDto, userId);
   }
+
 
   // Endpoint para ver la lista de mis electrodomésticos
   @Get()
@@ -22,13 +27,15 @@ export class DevicesController {
     return this.devicesService.findAllByUserId(userId);
   }
 
+
   // NUEVO: Endpoint para actualizar un electrodoméstico
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDeviceDto: any, @Request() req) {
+  update(@Param('id') id: string, @Body() updateDeviceDto: UpdateDeviceDto, @Request() req) {
     const userId = req.user.id;
     // El '+' delante de id lo convierte de String a Number
     return this.devicesService.update(+id, userId, updateDeviceDto);
   }
+
 
   // Endpoint para borrar un electrodoméstico
   @Delete(':id')
