@@ -75,9 +75,19 @@ export default function ProfileScreen({ navigation }: any) {
   const [avatarId, setAvatarId] = useState('bolt');
   const [modalAvatarVisible, setModalAvatarVisible] = useState(false);
 
+  // ─── Edición de electrodoméstico ──────────────────────────────────────────
+  const [deviceEditando, setDeviceEditando] = useState<any>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editPotencia, setEditPotencia] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [modalEditVisible, setModalEditVisible] = useState(false);
+
   const potenciaIngresada = parseFloat(nuevoDispositivo.potencia.replace(',', '.')) || 0;
   const excedePotencia = potenciaIngresada > MAX_POTENCIA;
   const avatarActual = AVATARES.find(a => a.id === avatarId) ?? AVATARES[0];
+
+  const editPotenciaNum = parseFloat(editPotencia.replace(',', '.')) || 0;
+  const excedePotenciaEdit = editPotenciaNum > MAX_POTENCIA;
 
   useEffect(() => {
     fetchProfileAndDevices();
@@ -235,6 +245,66 @@ export default function ProfileScreen({ navigation }: any) {
     );
   };
 
+  // ─── Abrir modal de edición ────────────────────────────────────────────────
+  const handleAbrirEdicion = (device: any) => {
+    setDeviceEditando(device);
+    setEditNombre(device.nombre);
+    setEditPotencia(device.potencia.toString());
+    setModalEditVisible(true);
+  };
+
+  // ─── Guardar edición de electrodoméstico ──────────────────────────────────
+  const handleGuardarEdicion = async () => {
+    if (!editNombre.trim() || !editPotencia) {
+      Alert.alert('Error', 'Por favor, rellena todos los campos.');
+      return;
+    }
+    if (editPotenciaNum <= 0 || excedePotenciaEdit) {
+      Alert.alert('Error', `La potencia debe estar entre 0.1 y ${MAX_POTENCIA} kW.`);
+      return;
+    }
+
+    const ejecutarGuardado = async () => {
+      setIsSavingEdit(true);
+      try {
+        await apiClient.patch(`/devices/${deviceEditando.id}`, {
+          nombre: editNombre.trim(),
+          potencia: editPotenciaNum,
+        });
+        setModalEditVisible(false);
+        setDeviceEditando(null);
+        fetchProfileAndDevices();
+        Alert.alert('✅ Éxito', 'Electrodoméstico actualizado correctamente.');
+      } catch (error) {
+        Alert.alert('Error', 'No se pudo actualizar el dispositivo.');
+      } finally {
+        setIsSavingEdit(false);
+      }
+    };
+
+    // Verificar si tiene programaciones antes de guardar
+    try {
+      const res = await apiClient.get(`/programaciones?deviceId=${deviceEditando.id}`);
+      const programaciones = Array.isArray(res.data) ? res.data : [];
+
+      if (programaciones.length > 0) {
+        Alert.alert(
+          '⚠️ Atención',
+          `Este electrodoméstico tiene ${programaciones.length} programación${programaciones.length > 1 ? 'es' : ''} activa${programaciones.length > 1 ? 's' : ''}.\n\nLos cambios en el nombre y la potencia se aplicarán al electrodoméstico y se reflejarán en todas sus programaciones existentes.\n\n¿Deseas continuar?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Sí, actualizar todo', style: 'default', onPress: ejecutarGuardado },
+          ]
+        );
+      } else {
+        await ejecutarGuardado();
+      }
+    } catch {
+      // Si la consulta de programaciones falla, guardamos igualmente
+      await ejecutarGuardado();
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     navigation.replace('Welcome');
@@ -284,6 +354,76 @@ export default function ProfileScreen({ navigation }: any) {
               ))}
             </View>
           </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ─── Modal edición de electrodoméstico ────────────────────────────── */}
+      <Modal
+        visible={modalEditVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalEditVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalEditVisible(false)}
+        >
+          {/* TouchableOpacity interior con activeOpacity=1 evita que el tap dentro cierre el modal */}
+          <TouchableOpacity activeOpacity={1} style={styles.modalBox}>
+            <Text style={styles.modalTitle}>✏️ Editar Electrodoméstico</Text>
+
+            <Text style={styles.label}>Nombre</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editNombre}
+              onChangeText={setEditNombre}
+              placeholder="Nombre del electrodoméstico"
+              placeholderTextColor="#bdc3c7"
+              maxLength={50}
+              autoFocus
+            />
+
+            <Text style={styles.label}>Potencia Máxima (kW)</Text>
+            <TextInput
+              style={[styles.textInput, excedePotenciaEdit && { borderColor: 'red' }]}
+              value={editPotencia}
+              onChangeText={setEditPotencia}
+              keyboardType="numeric"
+              placeholder="Ej: 2.5"
+              placeholderTextColor="#bdc3c7"
+            />
+
+            {excedePotenciaEdit && (
+              <Text style={{ color: 'red', fontSize: 12, marginTop: 4 }}>
+                Solo puedes introducir una potencia de hasta {MAX_POTENCIA} kW.
+              </Text>
+            )}
+
+            <View style={styles.editModalButtons}>
+              <TouchableOpacity
+                style={[styles.primaryButton, styles.editModalBtnCancel]}
+                onPress={() => setModalEditVisible(false)}
+                disabled={isSavingEdit}
+              >
+                <Text style={styles.buttonText}>CANCELAR</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  styles.editModalBtnConfirm,
+                  (excedePotenciaEdit || isSavingEdit) && { backgroundColor: '#bdc3c7' },
+                ]}
+                onPress={handleGuardarEdicion}
+                disabled={isSavingEdit || excedePotenciaEdit}
+              >
+                {isSavingEdit
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.buttonText}>GUARDAR</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
@@ -484,7 +624,18 @@ export default function ProfileScreen({ navigation }: any) {
                           <Text style={styles.deviceItemName}>{device.nombre}</Text>
                           <Text style={styles.deviceItemDetails}>{device.potencia} kW</Text>
                         </View>
-                        <TouchableOpacity onPress={() => handleDeleteDevice(device.id)} style={styles.deleteBtn}>
+                        {/* ─── Botón editar (NUEVO) ─── */}
+                        <TouchableOpacity
+                          onPress={() => handleAbrirEdicion(device)}
+                          style={styles.editBtn}
+                        >
+                          <Text style={styles.editIcon}>✏️</Text>
+                        </TouchableOpacity>
+                        {/* ─── Botón eliminar ─── */}
+                        <TouchableOpacity
+                          onPress={() => handleDeleteDevice(device.id)}
+                          style={styles.deleteBtn}
+                        >
                           <Text style={styles.deleteIcon}>🗑️</Text>
                         </TouchableOpacity>
                       </View>
@@ -570,6 +721,22 @@ const styles = StyleSheet.create({
   avatarOptionEmoji: { fontSize: 32 },
   avatarOptionLabel: { fontSize: 11, color: '#7f8c8d', marginTop: 4 },
 
+  // ─── Modal edición electrodoméstico (NUEVO) ───────────────────────────────
+  editModalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  editModalBtnCancel: {
+    flex: 1,
+    backgroundColor: '#bdc3c7',
+    marginTop: 8,
+  },
+  editModalBtnConfirm: {
+    flex: 1,
+    marginTop: 8,
+  },
+
   // ─── Cards y resto ────────────────────────────────────────────────────────
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, color: '#2c3e50' },
@@ -598,6 +765,9 @@ const styles = StyleSheet.create({
   deviceItemInfo: { flex: 1 },
   deviceItemName: { fontSize: 15, fontWeight: 'bold', color: '#2c3e50' },
   deviceItemDetails: { fontSize: 13, color: '#7f8c8d', marginTop: 2 },
+  // ─── Botones de acción del dispositivo (NUEVO editBtn) ───────────────────
+  editBtn: { padding: 8, marginRight: 2 },
+  editIcon: { fontSize: 18 },
   deleteBtn: { padding: 8 },
   deleteIcon: { fontSize: 18 },
 });
