@@ -5,6 +5,14 @@ import { Programacion } from './entities/programacion.entity';
 import { User } from '../users/entities/user.entity';
 import { Device } from '../devices/entities/device.entity';
 
+/** Devuelve la fecha local en España como string 'YYYY-MM-DD',
+ *  respetando automáticamente el cambio CET (UTC+1) / CEST (UTC+2). */
+function getLocalDateSpain(): string {
+  return new Date().toLocaleDateString('sv-SE', {
+    timeZone: 'Europe/Madrid',
+  });
+}
+
 @Injectable()
 export class ProgramacionesService {
   constructor(
@@ -12,14 +20,15 @@ export class ProgramacionesService {
     private readonly repo: Repository<Programacion>,
   ) {}
 
- async crear(userId: number, dto: any): Promise<Programacion> {
-  const prog = this.repo.create({
-    ...dto,
-    usuario: { id: userId } as User,
-    dispositivo: { id: dto.id_dispositivo } as Device,
-  } as Programacion);
-  return this.repo.save(prog);
-}
+  async crear(userId: number, dto: any): Promise<Programacion> {
+    const prog = this.repo.create({
+      ...dto,
+      fecha: getLocalDateSpain(), // ← fix: fecha local española en vez de CURRENT_DATE UTC
+      usuario: { id: userId } as User,
+      dispositivo: { id: dto.id_dispositivo } as Device,
+    } as Programacion);
+    return this.repo.save(prog);
+  }
 
   async findByUsuario(userId: number): Promise<Programacion[]> {
     return this.repo.find({
