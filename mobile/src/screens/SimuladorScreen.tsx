@@ -193,7 +193,15 @@ export default function SimuladorScreen() {
         return stillExists ? stillExists : resDevices.data[0];
       });
 
-      const hoyStr = new Date().toISOString().split('T')[0];
+      // ✅ CÓDIGO CORRECTO — fecha en hora local del dispositivo
+      const hoyStr = (() => {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+      
+      })();
       const resProg = await getProgramaciones();
       const progsHoy = resProg.data
         .filter((p: any) => p.fecha === hoyStr)
