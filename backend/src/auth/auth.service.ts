@@ -3,12 +3,13 @@ import {
   UnauthorizedException, 
   BadRequestException, 
   NotFoundException, 
-  InternalServerErrorException // <-- Añadido para manejar el error del servidor de correo
+  InternalServerErrorException
 } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { MailerService } from '@nestjs-modules/mailer';
+
 
 @Injectable()
 export class AuthService {
@@ -18,24 +19,31 @@ export class AuthService {
     private mailerService: MailerService,
   ) {}
 
+
   async register(email: string, pass: string) {
-    // 1. Comprobar si el usuario ya existe
+    // 1. Validar longitud mínima de la contraseña
+    if (pass.length < 6) {
+      throw new BadRequestException('La contraseña debe tener al menos 6 caracteres');
+    }
+
+    // 2. Comprobar si el usuario ya existe
     const existingUser = await this.usersService.findOneByEmail(email);
     if (existingUser) {
       throw new BadRequestException('El email ya está registrado');
     }
 
-    // 2. Encriptar la contraseña (10 rondas de salt)
+    // 3. Encriptar la contraseña (10 rondas de salt)
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(pass, saltRounds);
 
-    // 3. Guardar el usuario
+    // 4. Guardar el usuario
     const newUser = await this.usersService.create(email, hashedPassword);
 
-    // 4. Devolver los datos sin la contraseña
+    // 5. Devolver los datos sin la contraseña
     const { passwordHash, ...result } = newUser;
     return result;
   }
+
 
   async login(email: string, pass: string) {
     // 1. Buscar al usuario
@@ -58,8 +66,9 @@ export class AuthService {
     };
   }
 
+
   // ==========================================
-  // NUEVO: OBTENER PERFIL COMPLETO (Para persistir el estado de la UI)
+  // OBTENER PERFIL COMPLETO (Para persistir el estado de la UI)
   // ==========================================
   async getUserProfile(email: string) {
     const user = await this.usersService.findOneByEmail(email);
@@ -71,13 +80,13 @@ export class AuthService {
     return result;
   }
 
+
   // ==========================================
-  // NUEVO: PASO 1 - SOLICITAR RECUPERACIÓN DE CONTRASEÑA
+  // PASO 1 - SOLICITAR RECUPERACIÓN DE CONTRASEÑA
   // ==========================================
   async forgotPassword(email: string) {
     const user = await this.usersService.findOneByEmail(email);
     if (!user) {
-      // Por seguridad no se suele decir "No existe", pero en tu TFG es más útil para el usuario
       throw new NotFoundException('No existe ninguna cuenta con este correo.');
     }
 
@@ -116,8 +125,9 @@ export class AuthService {
     return { message: 'Correo de recuperación enviado con éxito' };
   }
 
+
   // ==========================================
-  // NUEVO: PASO 2 - VALIDAR Y RESTABLECER CONTRASEÑA
+  // PASO 2 - VALIDAR Y RESTABLECER CONTRASEÑA
   // ==========================================
   async resetPassword(email: string, code: string, newPassword: string) {
     const user = await this.usersService.findOneByEmail(email);

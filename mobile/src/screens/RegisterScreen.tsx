@@ -33,6 +33,11 @@ export default function RegisterScreen({ navigation }: any) {
       Alert.alert('Error', 'Introduce un email con formato válido (ejemplo@dominio.com)');
       return;
     }
+    // ✅ NUEVO: validación de longitud antes de llamar a la API
+    if (password.length < 6) {
+      Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Las contraseñas no coinciden');
       return;
@@ -43,8 +48,12 @@ export default function RegisterScreen({ navigation }: any) {
       Alert.alert('¡Éxito!', 'Cuenta creada. Ahora puedes iniciar sesión.', [
         { text: 'Ir al Login', onPress: () => navigation.replace('Login') },
       ]);
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo crear la cuenta. ¿Quizás el email ya existe?');
+    } catch (error: any) {
+      // ✅ NUEVO: leer el mensaje real del servidor en lugar de uno genérico
+      const msg =
+        error?.response?.data?.message ||
+        'No se pudo crear la cuenta. Inténtalo de nuevo.';
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -107,6 +116,10 @@ export default function RegisterScreen({ navigation }: any) {
               placeholder="••••••••"
               placeholderTextColor="#adb5bd"
             />
+            {/* ✅ NUEVO: hint de longitud mínima bajo el campo de contraseña */}
+            <Text style={styles.hint}>
+              🔒 Mínimo 6 caracteres.
+            </Text>
 
             <Text style={styles.label}>Repetir Contraseña</Text>
             <TextInput
@@ -151,11 +164,11 @@ export default function RegisterScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0faf4',  // ← mismo fondo verde suave que Login
+    backgroundColor: '#f0faf4',
     overflow: 'hidden',
   },
 
-  // ── Fondo decorativo (idéntico a LoginScreen) ──
+  // ── Fondo decorativo ──
   bgCircleLarge: {
     position: 'absolute',
     width: width * 1.1,
@@ -183,7 +196,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ── Cabecera (idéntica a LoginScreen) ──
+  // ── Cabecera ──
   header: {
     alignItems: 'center',
     marginBottom: 28,
@@ -237,7 +250,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // ── Tarjeta del formulario (idéntica a LoginScreen) ──
+  // ── Tarjeta del formulario ──
   formCard: {
     backgroundColor: '#ffffff',
     borderRadius: 24,
@@ -269,7 +282,7 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: 12,
     color: '#7f8c8d',
-    marginTop: -14,   // sube para cerrar el gap bajo el input de email
+    marginTop: -14,
     marginBottom: 20,
     lineHeight: 18,
   },
@@ -278,7 +291,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 14,
     alignItems: 'center',
-    shadowColor: '#27ae60',   // ← sombra verde como en LoginScreen
+    shadowColor: '#27ae60',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
@@ -306,7 +319,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   loginText: {
-    color: '#27ae60',   // ← verde en lugar del azul anterior
+    color: '#27ae60',
     fontSize: 15,
     fontWeight: 'bold',
   },
