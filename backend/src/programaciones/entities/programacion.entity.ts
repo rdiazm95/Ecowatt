@@ -13,12 +13,12 @@ export class Programacion {
   @Column({ type: 'date', default: () => 'CURRENT_DATE' })
   fecha: Date;
 
-  // decimal(5,4): soporta 21.0833 (21:05), 0.0833 (00:05), etc.
-  @Column({ type: 'decimal', precision: 5, scale: 4, name: 'hora_inicio' })
+  // decimal(6,4): soporta 0.0000 a 99.9999 → cubre 00:00–23:59 sin problema
+  @Column({ type: 'decimal', precision: 6, scale: 4, name: 'hora_inicio' })
   horaInicio: number;
 
-  // decimal(5,4): igual que horaInicio
-  @Column({ type: 'decimal', precision: 5, scale: 4, name: 'hora_fin' })
+  // decimal(7,4): soporta hasta 999.9999 → cubre también cruce de medianoche (hasta 47.x)
+  @Column({ type: 'decimal', precision: 7, scale: 4, name: 'hora_fin' })
   horaFin: number;
 
   // decimal(6,4): soporta duraciones hasta 24.0000 horas con precisión de minutos
