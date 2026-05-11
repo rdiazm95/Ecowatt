@@ -31,21 +31,24 @@ const MAX_POTENCIA = 999.99;
 const timeToDecimal = (date: Date): number =>
   date.getHours() + date.getMinutes() / 60;
 
+// ✅ FIX: si diff <= 0 la programación cruza medianoche → sumamos 24h
 const getDuracion = (start: Date, end: Date): number => {
-  const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-  return diff > 0 ? parseFloat(diff.toFixed(4)) : 0.25;
+  let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  if (diff <= 0) diff += 24;
+  return parseFloat(diff.toFixed(4));
 };
 
 const formatTime = (date: Date): string =>
   `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}h`;
 
 const decimalToTimeStr = (decimal: number): string => {
-  const h = Math.floor(decimal);
-  const m = Math.round((decimal - h) * 60);
+  // ✅ FIX: normalizamos por si horaFin >= 24 (cruce de medianoche)
+  const normalized = decimal >= 24 ? decimal - 24 : decimal;
+  const h = Math.floor(normalized);
+  const m = Math.round((normalized - h) * 60);
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}h`;
 };
 
-// ✅ NUEVO: igual que en EstadisticasScreen
 const formatDuracion = (horas: number): string => {
   const h = Math.floor(horas);
   const min = Math.round((horas - h) * 60);
@@ -129,15 +132,15 @@ const indicatorStyles = StyleSheet.create({
 
 // ---------------------------------------------------------------------------
 // Normaliza una programación del backend al formato local
-// ✅ CAMBIO: horaFin calculada, duracion como número (no string)
 // ---------------------------------------------------------------------------
 const mapProgFromBackend = (p: any) => ({
   id: p.id,
   nombre: p.dispositivo?.nombre ?? '—',
   potencia: parseFloat(p.potenciaW).toString(),
-  duracion: parseFloat(p.duracionHoras),                                   
+  duracion: parseFloat(p.duracionHoras),
   horaInicio: parseFloat(p.horaInicio),
-  horaFin: parseFloat(p.horaInicio) + parseFloat(p.duracionHoras),        
+  // ✅ horaFin puede ser > 24 si cruza medianoche; decimalToTimeStr lo normaliza
+  horaFin: parseFloat(p.horaInicio) + parseFloat(p.duracionHoras),
   coste: parseFloat(p.costeEstimado).toFixed(2),
   kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(2),
 });
@@ -175,6 +178,9 @@ export default function SimuladorScreen() {
   const excedePotencia = potenciaIngresada > MAX_POTENCIA;
   const duracionActual = getDuracion(startTime, endTime);
 
+  // ✅ FIX: cruzaMedianoche detectado en el frontend también
+  const cruzaMedianoche = timeToDecimal(endTime) < timeToDecimal(startTime);
+
   useFocusEffect(
     useCallback(() => {
       fetchData();
@@ -193,15 +199,9 @@ export default function SimuladorScreen() {
         return stillExists ? stillExists : resDevices.data[0];
       });
 
-      // ✅ CÓDIGO CORRECTO — fecha en hora local del dispositivo
-      const hoyStr = (() => {
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-      
-      })();
+      // ✅ Fecha local en hora española — evita guardar en el día anterior a medianoche
+      const hoyStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+
       const resProg = await getProgramaciones();
       const progsHoy = resProg.data
         .filter((p: any) => p.fecha === hoyStr)
@@ -279,7 +279,8 @@ export default function SimuladorScreen() {
       }
 
       const horaInicioDecimal = timeToDecimal(startTime);
-      const horaFinDecimal = Math.min(24, timeToDecimal(endTime));
+      // ✅ FIX: eliminado Math.min(24, ...) — horaFin real sin truncar
+      const horaFinDecimal = timeToDecimal(endTime);
       const duracionNum = duracionActual;
 
       const res = await crearProgramacion({
@@ -291,14 +292,14 @@ export default function SimuladorScreen() {
         id_dispositivo: selectedDevice.id,
       });
 
-      // ✅ CAMBIO: horaFin añadida, duracion como número
       const nuevaProg = {
         id: res.data.id,
         nombre: selectedDevice.nombre,
         potencia: potenciaIngresada.toString(),
-        duracion: duracionNum,                                              // ✅ número
+        duracion: duracionNum,
         horaInicio: horaInicioDecimal,
-        horaFin: horaFinDecimal,                                           // ✅ añadido
+        // ✅ horaFin puede quedar > 24 para programaciones nocturnas; decimalToTimeStr lo normaliza
+        horaFin: horaInicioDecimal + duracionNum,
         coste: parseFloat(simulacion.costeTotalEuros).toFixed(2),
         kwh: (potenciaIngresada * duracionNum).toFixed(2),
       };
@@ -458,7 +459,7 @@ export default function SimuladorScreen() {
                 <Text style={{ fontSize: 12, color: '#95a5a6' }}>({formatDuracion(duracionActual)})</Text>
               </Text>
 
-              {/* ✅ CAMBIO: mensaje más descriptivo */}
+              {/* Aviso hora pasada */}
               {isPastHour && (
                 <View style={styles.pastWarningBox}>
                   <Text style={styles.pastWarning}>
@@ -466,6 +467,21 @@ export default function SimuladorScreen() {
                   </Text>
                   <Text style={styles.pastWarningSub}>
                     Puedes continuar, y el sistema contabilizará el consumo de esas horas previas.
+                  </Text>
+                </View>
+              )}
+
+              {/* ✅ NUEVO: aviso de cruce de medianoche */}
+              {cruzaMedianoche && (
+                <View style={styles.midnightWarningBox}>
+                  <Text style={styles.midnightWarning}>
+                    🌙 Esta programación cruza la medianoche.
+                  </Text>
+                  <Text style={styles.midnightWarningSub}>
+                    Las horas tras las 00:00 se calculan con los precios de mañana.
+                    {simulacion?.recomendacion?.avisoManana
+                      ? ' ⏳ ' + simulacion.recomendacion.avisoManana
+                      : ''}
                   </Text>
                 </View>
               )}
@@ -498,6 +514,8 @@ export default function SimuladorScreen() {
                   onChange={(_, selected) => {
                     setShowStartPicker(false);
                     if (selected) {
+                      // ✅ FIX: si inicio >= fin Y no cruza medianoche intencionalmente,
+                      // ajustamos fin automáticamente para mantener la misma duración
                       if (selected >= endTime) {
                         const newEnd = new Date(selected.getTime() + 60 * 60 * 1000);
                         setEndTime(newEnd);
@@ -518,10 +536,8 @@ export default function SimuladorScreen() {
                   onChange={(_, selected) => {
                     setShowEndPicker(false);
                     if (selected) {
-                      if (selected <= startTime) {
-                        Alert.alert('Hora inválida', 'La hora de fin debe ser posterior a la de inicio.');
-                        return;
-                      }
+                      // ✅ FIX: eliminado el Alert que bloqueaba programaciones nocturnas.
+                      // Si fin < inicio → getDuracion suma 24h automáticamente (cruce de medianoche).
                       setEndTime(selected);
                     }
                   }}
@@ -554,7 +570,6 @@ export default function SimuladorScreen() {
                   </View>
 
                   <View style={styles.editInputGroup}>
-                    {/* ✅ CAMBIO: label sin "(h)" y valor con formatDuracion */}
                     <Text style={styles.editLabel}>Duración</Text>
                     <TextInput
                       style={[styles.editInput, { backgroundColor: '#f1f2f6', color: '#95a5a6' }]}
@@ -583,7 +598,8 @@ export default function SimuladorScreen() {
                       </Text>
                     )}
 
-                    {simulacion.recomendacion.avisoManana && (
+                    {/* ✅ avisoManana solo si NO se muestra ya en el aviso de medianoche */}
+                    {simulacion.recomendacion.avisoManana && !cruzaMedianoche && (
                       <Text style={styles.alertWait}>⏳ {simulacion.recomendacion.avisoManana}</Text>
                     )}
                   </View>
@@ -616,7 +632,6 @@ export default function SimuladorScreen() {
               </Text>
             ) : (
               <ScrollWithIndicator maxHeight={220}>
-                {/* ✅ CAMBIO: muestra horaFin y formatDuracion, mismo estilo que EstadisticasScreen */}
                 {programaciones.map((prog) => (
                   <View key={prog.id} style={styles.progItem}>
                     <View style={{ flex: 1 }}>
@@ -627,6 +642,8 @@ export default function SimuladorScreen() {
                       <View style={styles.progHorarioRow}>
                         <Text style={styles.progTime}>
                           🕐 {decimalToTimeStr(prog.horaInicio)} – {decimalToTimeStr(prog.horaFin)}
+                          {/* ✅ indicador visual si cruza medianoche */}
+                          {prog.horaFin >= 24 ? '  🌙' : ''}
                         </Text>
                         <Text style={styles.progDuracion}>⏱ {formatDuracion(prog.duracion)}</Text>
                       </View>
@@ -690,11 +707,9 @@ const styles = StyleSheet.create({
   deviceName: { fontSize: 12, textAlign: 'center', color: '#7f8c8d' },
   deviceNameSelected: { color: '#2980b9', fontWeight: '600' },
   chart: { marginVertical: 8, borderRadius: 16, alignSelf: 'center' },
-  // Time picker
   timePickerContainer: { marginTop: 12, paddingHorizontal: 5 },
   sliderLabel: { fontSize: 14, color: '#34495e', textAlign: 'center', marginBottom: 10 },
   hourValue: { fontWeight: 'bold', color: '#3498db', fontSize: 15 },
-  // ✅ NUEVO: contenedor del aviso de hora pasada
   pastWarningBox: {
     backgroundColor: '#fdf2e9',
     borderLeftWidth: 3,
@@ -711,6 +726,27 @@ const styles = StyleSheet.create({
   },
   pastWarningSub: {
     color: '#e67e22',
+    fontSize: 11,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  // ✅ NUEVO: estilos para aviso de cruce de medianoche
+  midnightWarningBox: {
+    backgroundColor: '#eaf0fb',
+    borderLeftWidth: 3,
+    borderLeftColor: '#2980b9',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  midnightWarning: {
+    color: '#1a5276',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  midnightWarningSub: {
+    color: '#2980b9',
     fontSize: 11,
     marginTop: 2,
     fontStyle: 'italic',
@@ -741,7 +777,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#2980b9',
   },
-  // Cost & form
   mainCost: {
     fontSize: 32,
     fontWeight: '800',
@@ -789,7 +824,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontStyle: 'italic',
   },
-  // Programaciones list
   progItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -799,7 +833,6 @@ const styles = StyleSheet.create({
     borderBottomColor: '#ecf0f1',
   },
   progName: { fontWeight: 'bold', color: '#2c3e50', fontSize: 15 },
-  // ✅ NUEVO: fila de horario con hora fin y duración
   progHorarioRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

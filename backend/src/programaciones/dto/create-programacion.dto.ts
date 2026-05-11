@@ -30,7 +30,7 @@ export class CreateProgramacionDto {
   potenciaW: number;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 4 })
+  @IsNumber({ maxDecimalPlaces: 8 })
   costeEstimado?: number;
 
   @IsNumber({}, { message: 'id_dispositivo debe ser un número entero' })
