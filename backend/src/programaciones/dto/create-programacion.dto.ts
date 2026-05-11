@@ -9,19 +9,19 @@ export class CreateProgramacionDto {
   @IsDateString({}, { message: 'La fecha debe tener formato YYYY-MM-DD' })
   fecha?: string;
 
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'horaInicio debe ser un número decimal (ej: 11.00)' })
+  @IsNumber({ maxDecimalPlaces: 4 }, { message: 'horaInicio debe ser un número decimal (ej: 21.0833 para las 21:05)' })
   @Min(0, { message: 'La hora de inicio no puede ser negativa' })
-  @Max(23.99, { message: 'La hora de inicio no puede superar las 23:59' })
+  @Max(23.9999, { message: 'La hora de inicio no puede superar las 23:59' })
   horaInicio: number;
 
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'horaFin debe ser un número decimal (ej: 12.00)' })
+  @IsNumber({ maxDecimalPlaces: 4 }, { message: 'horaFin debe ser un número decimal (ej: 22.0833 para las 22:05)' })
   @Min(0, { message: 'La hora de fin no puede ser negativa' })
-  @Max(23.99, { message: 'La hora de fin no puede superar las 23:59' })
+  @Max(23.9999, { message: 'La hora de fin no puede superar las 23:59' })
   horaFin: number;
 
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'duracionHoras debe ser un número decimal' })
-  @Min(0.01, { message: 'La duración debe ser mayor que 0' })
-  @Max(99.99, { message: 'La duración no puede superar 99.99 horas' })
+  @IsNumber({ maxDecimalPlaces: 4 }, { message: 'duracionHoras debe ser un número decimal' })
+  @Min(0.0001, { message: 'La duración debe ser mayor que 0' })
+  @Max(24, { message: 'La duración no puede superar 24 horas' })
   duracionHoras: number;
 
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'potenciaW debe ser un número decimal' })

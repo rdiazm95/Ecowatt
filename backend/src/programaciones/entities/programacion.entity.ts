@@ -13,15 +13,16 @@ export class Programacion {
   @Column({ type: 'date', default: () => 'CURRENT_DATE' })
   fecha: Date;
 
-  // ↓ Cambiado: smallint → decimal(4,2) para soportar 11.0833 (11:05)
-  @Column({ type: 'decimal', precision: 4, scale: 2, name: 'hora_inicio' })
+  // decimal(5,4): soporta 21.0833 (21:05), 0.0833 (00:05), etc.
+  @Column({ type: 'decimal', precision: 5, scale: 4, name: 'hora_inicio' })
   horaInicio: number;
 
-  // ↓ Cambiado: smallint → decimal(4,2) para soportar 12.0833 (12:05)
-  @Column({ type: 'decimal', precision: 4, scale: 2, name: 'hora_fin' })
+  // decimal(5,4): igual que horaInicio
+  @Column({ type: 'decimal', precision: 5, scale: 4, name: 'hora_fin' })
   horaFin: number;
 
-  @Column({ type: 'decimal', precision: 4, scale: 2, name: 'duracion_horas' })
+  // decimal(6,4): soporta duraciones hasta 24.0000 horas con precisión de minutos
+  @Column({ type: 'decimal', precision: 6, scale: 4, name: 'duracion_horas' })
   duracionHoras: number;
 
   @Column({ type: 'decimal', precision: 7, scale: 2, name: 'potencia_w' })
