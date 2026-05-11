@@ -4,10 +4,12 @@ import { AuthGuard } from '@nestjs/passport';
 import { CalculateCostDto } from './dto/calculate-cost.dto';
 
 
+
 @UseGuards(AuthGuard('jwt'))
 @Controller('simulator')
 export class SimulatorController {
   constructor(private readonly simulatorService: SimulatorService) {}
+
 
 
   @Post('calculate')
@@ -22,6 +24,7 @@ export class SimulatorController {
       body.startHour,
       body.duracion,
       body.potencia,
+      body.horaFin, // ✅ NUEVO: pasar horaFin al servicio
     );
   }
 }
