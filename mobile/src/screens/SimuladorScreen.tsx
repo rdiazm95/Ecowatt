@@ -21,10 +21,9 @@ import { apiClient } from '../api/client';
 import { getProgramaciones, crearProgramacion, eliminarProgramacion as eliminarProgramacionApi } from '../api/programaciones';
 
 
-
 const screenWidth = Dimensions.get('window').width;
 const MAX_POTENCIA = 999.99;
-
+const HORA_PUBLICACION_PRECIOS = 21; // 21:00h
 
 
 // ---------------------------------------------------------------------------
@@ -33,17 +32,22 @@ const MAX_POTENCIA = 999.99;
 const timeToDecimal = (date: Date): number =>
   date.getHours() + date.getMinutes() / 60;
 
-
+// 🔧 FIX: Calcula duración en decimal puro sin depender de Date.getTime()
+// Esto evita que 23:00→23:55 se calcule como 24h55min cuando los Date objects
+// tienen fechas inconsistentes (el picker siempre devuelve "hoy").
 const getDuracion = (start: Date, end: Date): number => {
-  let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  const ini = timeToDecimal(start);
+  const fin = timeToDecimal(end);
+  let diff = fin - ini;
+  // Solo suma 24h si fin < inicio Y fin no es 0 exacto (00:00 es límite permitido = 1h desde 23:00)
+  if (fin < ini && fin !== 0) diff += 24;
+  // Si diff sigue siendo <= 0 (caso 00:00 exacto con inicio=23:00 → diff=-23 → +24=1h)
   if (diff <= 0) diff += 24;
   return parseFloat(diff.toFixed(4));
 };
 
-
 const formatTime = (date: Date): string =>
   `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}h`;
-
 
 const decimalToTimeStr = (decimal: number): string => {
   const normalized = decimal >= 24 ? decimal - 24 : decimal;
@@ -52,14 +56,12 @@ const decimalToTimeStr = (decimal: number): string => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}h`;
 };
 
-
 const formatDuracion = (horas: number): string => {
   const h = Math.floor(horas);
   const min = Math.round((horas - h) * 60);
   if (min === 0) return `${h}h`;
   return `${h}h ${min}min`;
 };
-
 
 
 // ---------------------------------------------------------------------------
@@ -70,27 +72,22 @@ interface ScrollWithIndicatorProps {
   maxHeight: number;
 }
 
-
 const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, maxHeight }) => {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(maxHeight);
 
-
   const showIndicator = contentHeight > containerHeight;
-
 
   const thumbHeight = showIndicator
     ? Math.max(28, (containerHeight / contentHeight) * containerHeight)
     : 0;
-
 
   const thumbTop = scrollY.interpolate({
     inputRange: [0, Math.max(1, contentHeight - containerHeight)],
     outputRange: [0, Math.max(0, containerHeight - thumbHeight)],
     extrapolate: 'clamp',
   });
-
 
   return (
     <View style={{ maxHeight, flexDirection: 'row' }}>
@@ -109,7 +106,6 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
         {children}
       </ScrollView>
 
-
       {showIndicator && (
         <View style={indicatorStyles.track}>
           <Animated.View
@@ -123,7 +119,6 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
     </View>
   );
 };
-
 
 const indicatorStyles = StyleSheet.create({
   track: {
@@ -142,7 +137,6 @@ const indicatorStyles = StyleSheet.create({
 });
 
 
-
 // ---------------------------------------------------------------------------
 // Normaliza una programación del backend al formato local
 // ---------------------------------------------------------------------------
@@ -158,15 +152,12 @@ const mapProgFromBackend = (p: any) => ({
 });
 
 
-
 export default function SimuladorScreen() {
   const currentRealHour = new Date().getHours() + new Date().getMinutes() / 60;
-
 
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<any>(null);
   const [programaciones, setProgramaciones] = useState<any[]>([]);
-
 
   const [startTime, setStartTime] = useState<Date>(() => {
     const d = new Date();
@@ -181,25 +172,27 @@ export default function SimuladorScreen() {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-
   const [editedPotencia, setEditedPotencia] = useState('');
-
 
   const [simulacion, setSimulacion] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-
   const toNumber = (value: any) => parseFloat(String(value).replace(',', '.')) || 0;
-
 
   const potenciaIngresada = toNumber(editedPotencia);
   const excedePotencia = potenciaIngresada > MAX_POTENCIA;
   const duracionActual = getDuracion(startTime, endTime);
 
+  const inicioDecimal = timeToDecimal(startTime);
+  const finDecimal = timeToDecimal(endTime);
 
-  const cruzaMedianoche = timeToDecimal(endTime) < timeToDecimal(startTime);
+  // 🔧 FIX: 00:00 exacto (finDecimal === 0) NO es cruce de medianoche — es el límite del día
+  const cruzaMedianoche = finDecimal < inicioDecimal && finDecimal !== 0;
 
+  const ahoraDecimal = new Date().getHours() + new Date().getMinutes() / 60;
+  const hayPreciosMañana = ahoraDecimal >= HORA_PUBLICACION_PRECIOS;
+  const cruzaMedianocheYSinPrecios = cruzaMedianoche && !hayPreciosMañana;
 
   useFocusEffect(
     useCallback(() => {
@@ -207,12 +200,10 @@ export default function SimuladorScreen() {
     }, [])
   );
 
-
   const fetchData = async () => {
     try {
       const resDevices = await apiClient.get('/devices');
       setDevices(resDevices.data);
-
 
       setSelectedDevice((prevDevice: any) => {
         if (resDevices.data.length === 0) return null;
@@ -221,9 +212,7 @@ export default function SimuladorScreen() {
         return stillExists ? stillExists : resDevices.data[0];
       });
 
-
       const hoyStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
-
 
       const resProg = await getProgramaciones();
       const progsHoy = resProg.data
@@ -231,14 +220,12 @@ export default function SimuladorScreen() {
         .map(mapProgFromBackend);
       setProgramaciones(progsHoy);
 
-
     } catch (error) {
       console.error('Error cargando datos:', error);
     } finally {
       setLoading(false);
     }
   };
-
 
   useEffect(() => {
     if (selectedDevice) {
@@ -251,7 +238,6 @@ export default function SimuladorScreen() {
     }
   }, [selectedDevice]);
 
-
   const calcular = async (
     disp = selectedDevice,
     start = startTime,
@@ -260,22 +246,18 @@ export default function SimuladorScreen() {
   ) => {
     if (!disp) return;
 
-
     try {
       const duracionNum = getDuracion(start, end);
       const potenciaNum = toNumber(pot) || 0;
 
-
       if (potenciaNum === 0 || potenciaNum > MAX_POTENCIA) return;
-
 
       const resSimulador = await apiClient.post('/simulator/calculate', {
         deviceId: disp.id,
-        startHour: parseFloat(timeToDecimal(start).toFixed(4)),  // ✅ FIX: redondeado
-        duracion: parseFloat(duracionNum.toFixed(4)),             // ✅ FIX: redondeado
-        potencia: parseFloat(potenciaNum.toFixed(2)),             // ✅ FIX: redondeado
+        startHour: parseFloat(timeToDecimal(start).toFixed(4)),
+        duracion: parseFloat(duracionNum.toFixed(4)),
+        potencia: parseFloat(potenciaNum.toFixed(2)),
       });
-
 
       setSimulacion(resSimulador.data);
     } catch (error) {
@@ -283,29 +265,31 @@ export default function SimuladorScreen() {
     }
   };
 
-
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       calcular(selectedDevice, startTime, endTime, editedPotencia);
     }, 300);
 
-
     return () => clearTimeout(timeoutId);
   }, [selectedDevice, startTime, endTime, editedPotencia]);
 
-
   const handleProgramar = async () => {
     if (!selectedDevice || !simulacion) return;
-
 
     if (potenciaIngresada <= 0 || excedePotencia) {
       Alert.alert('Error', `La potencia debe estar entre 0.1 y ${MAX_POTENCIA} kW.`);
       return;
     }
 
+    if (cruzaMedianocheYSinPrecios) {
+      Alert.alert(
+        '⏳ Precios de mañana no disponibles',
+        'Esta programación incluye horas del día siguiente. Los precios PVPC se publican a las 21h. Inténtalo de nuevo más tarde.'
+      );
+      return;
+    }
 
     setSaving(true);
-
 
     try {
       try {
@@ -314,14 +298,16 @@ export default function SimuladorScreen() {
         console.warn('No se pudo actualizar la potencia del dispositivo.');
       }
 
-      // ✅ FIX: redondeos seguros — evitan fallos de validación por floating point de JS
-      // Ejemplo: parseFloat("1.55") puede ser 1.5500000000000001 internamente.
-      // toFixed(N) + parseFloat garantiza exactamente N decimales antes de enviar al backend.
-      const horaInicioDecimal = parseFloat(timeToDecimal(startTime).toFixed(4));
-      const horaFinDecimal    = parseFloat(timeToDecimal(endTime).toFixed(4));
-      const duracionNum       = parseFloat(duracionActual.toFixed(4));
-      const potenciaRed       = parseFloat(potenciaIngresada.toFixed(2));
-      const costeRed          = parseFloat(parseFloat(simulacion.costeTotalEuros).toFixed(4));
+      const horaInicioDecimal = parseFloat(inicioDecimal.toFixed(4));
+
+      // 🔧 FIX: horaFin > 24 solo cuando cruza medianoche de verdad (fin < inicio Y fin !== 0)
+      const horaFinDecimal = cruzaMedianoche
+        ? parseFloat((finDecimal + 24).toFixed(4))
+        : parseFloat(finDecimal.toFixed(4));
+
+      const duracionNum  = parseFloat(duracionActual.toFixed(4));
+      const potenciaRed  = parseFloat(potenciaIngresada.toFixed(2));
+      const costeRed     = parseFloat(parseFloat(simulacion.costeTotalEuros).toFixed(4));
 
       const res = await crearProgramacion({
         horaInicio:     horaInicioDecimal,
@@ -332,32 +318,27 @@ export default function SimuladorScreen() {
         id_dispositivo: selectedDevice.id,
       });
 
-
       const nuevaProg = {
         id: res.data.id,
         nombre: selectedDevice.nombre,
         potencia: potenciaRed.toString(),
         duracion: duracionNum,
         horaInicio: horaInicioDecimal,
-        horaFin: horaInicioDecimal + duracionNum,
+        horaFin: horaFinDecimal,
         coste: costeRed.toFixed(2),
         kwh: (potenciaRed * duracionNum).toFixed(2),
       };
 
-
       setProgramaciones((prev) => [...prev, nuevaProg]);
-
 
       Alert.alert('¡Añadido! ✅', `${selectedDevice.nombre} programado a las ${formatTime(startTime)}.`);
     } catch (error: any) {
-      // ✅ FIX: log del error real para ver exactamente qué campo falla en el backend
       console.error('Error guardando programación:', JSON.stringify(error?.response?.data ?? error));
       Alert.alert('Error', 'No se pudo guardar la programación en el servidor.');
     } finally {
       setSaving(false);
     }
   };
-
 
   const eliminarProgramacion = (id: string | number) => {
     Alert.alert(
@@ -383,7 +364,6 @@ export default function SimuladorScreen() {
     );
   };
 
-
   if (loading && devices.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -392,30 +372,24 @@ export default function SimuladorScreen() {
     );
   }
 
-
-  const isPastHour = timeToDecimal(startTime) < currentRealHour;
-
+  const isPastHour = inicioDecimal < currentRealHour;
 
   const chartLabels =
     simulacion && simulacion.desglose.length > 0
       ? simulacion.desglose.map((d: any, index: number) => (index % 4 === 0 ? d.hora : ''))
       : ['--'];
 
-
   const chartData =
     simulacion && simulacion.desglose.length > 0
       ? simulacion.desglose.map((d: any) => toNumber(d.costeFranja))
       : [0];
-
 
   const franjaActual = simulacion?.recomendacion?.franja || '';
   const esCara = franjaActual.includes('CARA');
   const esBarata = franjaActual.includes('BARATA');
   const esIntermedia = !!simulacion?.recomendacion && !esCara && !esBarata;
 
-
   const etiquetaFranja = esCara ? 'cara' : esBarata ? 'barata' : 'intermedia';
-
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -431,7 +405,6 @@ export default function SimuladorScreen() {
         >
           <Text style={styles.pageTitle}>Programador Diario</Text>
 
-
           {/* ── Card 1: Selección de dispositivo ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>1. Selecciona un electrodoméstico</Text>
@@ -445,7 +418,6 @@ export default function SimuladorScreen() {
                 if (device.tipo === 'microondas') icon = '🍱';
                 if (device.tipo === 'frigorifico') icon = '❄️';
                 if (device.tipo === 'tv') icon = '📺';
-
 
                 return (
                   <TouchableOpacity
@@ -463,11 +435,9 @@ export default function SimuladorScreen() {
             </ScrollView>
           </View>
 
-
           {/* ── Card 2: Curva de precios + Time pickers ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
-
 
             {devices.length === 0 ? (
               <View style={{ height: 180, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }}>
@@ -504,7 +474,6 @@ export default function SimuladorScreen() {
               </View>
             )}
 
-
             {/* Time pickers */}
             <View style={styles.timePickerContainer}>
               <Text style={styles.sliderLabel}>
@@ -516,7 +485,6 @@ export default function SimuladorScreen() {
                 <Text style={{ fontSize: 12, color: '#95a5a6' }}>({formatDuracion(duracionActual)})</Text>
               </Text>
 
-
               {isPastHour && (
                 <View style={styles.pastWarningBox}>
                   <Text style={styles.pastWarning}>
@@ -527,7 +495,6 @@ export default function SimuladorScreen() {
                   </Text>
                 </View>
               )}
-
 
               {cruzaMedianoche && (
                 <View style={styles.midnightWarningBox}>
@@ -543,6 +510,16 @@ export default function SimuladorScreen() {
                 </View>
               )}
 
+              {cruzaMedianocheYSinPrecios && (
+                <View style={styles.pastWarningBox}>
+                  <Text style={styles.pastWarning}>
+                    ⏳ Precios de mañana no disponibles aún
+                  </Text>
+                  <Text style={styles.pastWarningSub}>
+                    Los precios PVPC del día siguiente se publican a las 21:00h. Programa esta franja después de esa hora.
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.timePickerRow}>
                 <TouchableOpacity
@@ -553,7 +530,6 @@ export default function SimuladorScreen() {
                   <Text style={styles.timePickerValue}>{formatTime(startTime)}</Text>
                 </TouchableOpacity>
 
-
                 <TouchableOpacity
                   style={styles.timePickerBtn}
                   onPress={() => setShowEndPicker(true)}
@@ -562,7 +538,6 @@ export default function SimuladorScreen() {
                   <Text style={styles.timePickerValue}>{formatTime(endTime)}</Text>
                 </TouchableOpacity>
               </View>
-
 
               {showStartPicker && (
                 <DateTimePicker
@@ -584,7 +559,6 @@ export default function SimuladorScreen() {
                 />
               )}
 
-
               {showEndPicker && (
                 <DateTimePicker
                   value={endTime}
@@ -603,12 +577,10 @@ export default function SimuladorScreen() {
             </View>
           </View>
 
-
           {/* ── Card 3: Ajustes y confirmación ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>3. Ajustes y Confirmación</Text>
             <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
-
 
             {simulacion && (
               <View style={styles.detailsContainer}>
@@ -628,7 +600,6 @@ export default function SimuladorScreen() {
                     )}
                   </View>
 
-
                   <View style={styles.editInputGroup}>
                     <Text style={styles.editLabel}>Duración</Text>
                     <TextInput
@@ -638,7 +609,6 @@ export default function SimuladorScreen() {
                     />
                   </View>
                 </View>
-
 
                 {simulacion.recomendacion && (
                   <View
@@ -651,7 +621,6 @@ export default function SimuladorScreen() {
                     {esIntermedia && <Text style={styles.alertTitle}>🟡 Hora intermedia</Text>}
                     {esCara && <Text style={styles.alertTitle}>🔴 Hora cara</Text>}
 
-
                     {duracionActual > 1 && (
                       <Text style={styles.alertSub}>
                         La media del precio de esta franja es{' '}
@@ -659,7 +628,6 @@ export default function SimuladorScreen() {
                         comparada con el precio del día.
                       </Text>
                     )}
-
 
                     {simulacion.recomendacion.avisoManana && !cruzaMedianoche && (
                       <Text style={styles.alertWait}>⏳ {simulacion.recomendacion.avisoManana}</Text>
@@ -669,14 +637,13 @@ export default function SimuladorScreen() {
               </View>
             )}
 
-
             <TouchableOpacity
               style={[
                 styles.button,
-                (devices.length === 0 || excedePotencia) && { backgroundColor: '#bdc3c7' },
+                (devices.length === 0 || excedePotencia || cruzaMedianocheYSinPrecios) && { backgroundColor: '#bdc3c7' },
               ]}
               onPress={handleProgramar}
-              disabled={saving || devices.length === 0 || excedePotencia}
+              disabled={saving || devices.length === 0 || excedePotencia || cruzaMedianocheYSinPrecios}
             >
               {saving ? (
                 <ActivityIndicator color="#fff" />
@@ -685,7 +652,6 @@ export default function SimuladorScreen() {
               )}
             </TouchableOpacity>
           </View>
-
 
           {/* ── Card 4: Lista de programaciones ── */}
           <View style={styles.card}>
@@ -724,14 +690,12 @@ export default function SimuladorScreen() {
             )}
           </View>
 
-
           <View style={{ height: 100 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
-
 
 
 const styles = StyleSheet.create({
