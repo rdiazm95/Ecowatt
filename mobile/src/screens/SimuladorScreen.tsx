@@ -21,37 +21,81 @@ import { apiClient } from '../api/client';
 import { getProgramaciones, crearProgramacion, eliminarProgramacion as eliminarProgramacionApi } from '../api/programaciones';
 
 
+
 const screenWidth = Dimensions.get('window').width;
 const MAX_POTENCIA = 999.99;
+
 
 
 // ---------------------------------------------------------------------------
 // Helpers de tiempo
 // ---------------------------------------------------------------------------
+
+/**
+ * Convierte una fecha a decimal de hora (0-23.99).
+ * Siempre devuelve el valor puro de la hora del objeto Date.
+ */
 const timeToDecimal = (date: Date): number =>
   date.getHours() + date.getMinutes() / 60;
 
-const getDuracion = (start: Date, end: Date): number => {
-  const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-  return diff > 0 ? parseFloat(diff.toFixed(4)) : 0.25;
+/**
+ * Devuelve el decimal de hora de `end` relativo a `start`.
+ * Si `end` (en horas del día) es <= `start` (en horas del día),
+ * se interpreta que `end` es del día siguiente, por lo que devuelve
+ * timeToDecimal(end) + 24.
+ * Ejemplo: start=23:00, end=01:00 → devuelve 25.0
+ */
+const timeToDecimalRelative = (start: Date, end: Date): number => {
+  const startDec = timeToDecimal(start);
+  const endDec   = timeToDecimal(end);
+  return endDec <= startDec ? endDec + 24 : endDec;
 };
 
-const formatTime = (date: Date): string =>
-  `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}h`;
+/**
+ * Calcula la duración en horas entre start y end.
+ * Si end <= start se interpreta que end es del día siguiente.
+ * Mínimo 0.0833h (5 min).
+ */
+const getDuracion = (start: Date, end: Date): number => {
+  let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  if (diff <= 0) {
+    // end es "del día siguiente" visualmente → sumar 24h
+    diff += 24;
+  }
+  return diff > 0 ? parseFloat(diff.toFixed(4)) : 0.0833;
+};
+
+/**
+ * Formatea una fecha como "HH:MMh".
+ * Si `isNextDay` es true, añade "(+1)" para indicar que es del día siguiente.
+ */
+const formatTime = (date: Date, isNextDay = false): string => {
+  const base = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}h`;
+  return isNextDay ? `${base} (+1)` : base;
+};
 
 const decimalToTimeStr = (decimal: number): string => {
-  const h = Math.floor(decimal);
-  const m = Math.round((decimal - h) * 60);
+  // Normaliza por si viene > 24 (hora del día siguiente)
+  const normalized = decimal >= 24 ? decimal - 24 : decimal;
+  const h = Math.floor(normalized);
+  const m = Math.round((normalized - h) * 60);
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}h`;
 };
 
-// ✅ NUEVO: igual que en EstadisticasScreen
 const formatDuracion = (horas: number): string => {
   const h = Math.floor(horas);
   const min = Math.round((horas - h) * 60);
   if (min === 0) return `${h}h`;
   return `${h}h ${min}min`;
 };
+
+/**
+ * Determina si endTime es del día siguiente respecto a startTime
+ * (comparando solo horas/minutos, sin fecha real).
+ */
+const isNextDay = (start: Date, end: Date): boolean =>
+  timeToDecimal(end) <= timeToDecimal(start);
+
 
 
 // ---------------------------------------------------------------------------
@@ -62,22 +106,27 @@ interface ScrollWithIndicatorProps {
   maxHeight: number;
 }
 
+
 const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, maxHeight }) => {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(maxHeight);
 
+
   const showIndicator = contentHeight > containerHeight;
+
 
   const thumbHeight = showIndicator
     ? Math.max(28, (containerHeight / contentHeight) * containerHeight)
     : 0;
+
 
   const thumbTop = scrollY.interpolate({
     inputRange: [0, Math.max(1, contentHeight - containerHeight)],
     outputRange: [0, Math.max(0, containerHeight - thumbHeight)],
     extrapolate: 'clamp',
   });
+
 
   return (
     <View style={{ maxHeight, flexDirection: 'row' }}>
@@ -96,6 +145,7 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
         {children}
       </ScrollView>
 
+
       {showIndicator && (
         <View style={indicatorStyles.track}>
           <Animated.View
@@ -109,6 +159,7 @@ const ScrollWithIndicator: React.FC<ScrollWithIndicatorProps> = ({ children, max
     </View>
   );
 };
+
 
 const indicatorStyles = StyleSheet.create({
   track: {
@@ -127,28 +178,31 @@ const indicatorStyles = StyleSheet.create({
 });
 
 
+
 // ---------------------------------------------------------------------------
 // Normaliza una programación del backend al formato local
-// ✅ CAMBIO: horaFin calculada, duracion como número (no string)
 // ---------------------------------------------------------------------------
 const mapProgFromBackend = (p: any) => ({
   id: p.id,
   nombre: p.dispositivo?.nombre ?? '—',
   potencia: parseFloat(p.potenciaW).toString(),
-  duracion: parseFloat(p.duracionHoras),                                   
+  duracion: parseFloat(p.duracionHoras),
   horaInicio: parseFloat(p.horaInicio),
-  horaFin: parseFloat(p.horaInicio) + parseFloat(p.duracionHoras),        
+  horaFin: parseFloat(p.horaInicio) + parseFloat(p.duracionHoras),
   coste: parseFloat(p.costeEstimado).toFixed(2),
   kwh: (parseFloat(p.potenciaW) * parseFloat(p.duracionHoras)).toFixed(2),
 });
 
 
+
 export default function SimuladorScreen() {
   const currentRealHour = new Date().getHours() + new Date().getMinutes() / 60;
+
 
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<any>(null);
   const [programaciones, setProgramaciones] = useState<any[]>([]);
+
 
   const [startTime, setStartTime] = useState<Date>(() => {
     const d = new Date();
@@ -163,17 +217,26 @@ export default function SimuladorScreen() {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
+
   const [editedPotencia, setEditedPotencia] = useState('');
+
 
   const [simulacion, setSimulacion] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+
   const toNumber = (value: any) => parseFloat(String(value).replace(',', '.')) || 0;
+
 
   const potenciaIngresada = toNumber(editedPotencia);
   const excedePotencia = potenciaIngresada > MAX_POTENCIA;
   const duracionActual = getDuracion(startTime, endTime);
+
+  // ✅ FIX: hora fin relativa (puede ser > 24 si es del día siguiente)
+  const horaFinDecimal = timeToDecimalRelative(startTime, endTime);
+  const endIsNextDay   = isNextDay(startTime, endTime);
+
 
   useFocusEffect(
     useCallback(() => {
@@ -181,10 +244,12 @@ export default function SimuladorScreen() {
     }, [])
   );
 
+
   const fetchData = async () => {
     try {
       const resDevices = await apiClient.get('/devices');
       setDevices(resDevices.data);
+
 
       setSelectedDevice((prevDevice: any) => {
         if (resDevices.data.length === 0) return null;
@@ -193,20 +258,21 @@ export default function SimuladorScreen() {
         return stillExists ? stillExists : resDevices.data[0];
       });
 
-      // ✅ CÓDIGO CORRECTO — fecha en hora local del dispositivo
+
       const hoyStr = (() => {
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-      
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
       })();
+
       const resProg = await getProgramaciones();
       const progsHoy = resProg.data
         .filter((p: any) => p.fecha === hoyStr)
         .map(mapProgFromBackend);
       setProgramaciones(progsHoy);
+
 
     } catch (error) {
       console.error('Error cargando datos:', error);
@@ -214,6 +280,7 @@ export default function SimuladorScreen() {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     if (selectedDevice) {
@@ -225,6 +292,7 @@ export default function SimuladorScreen() {
       }
     }
   }, [selectedDevice]);
+
 
   const calcular = async (
     disp = selectedDevice,
@@ -240,11 +308,16 @@ export default function SimuladorScreen() {
 
       if (potenciaNum === 0 || potenciaNum > MAX_POTENCIA) return;
 
+      // ✅ FIX: enviar startHour y horaFin correctos para cruce de medianoche
+      const startHour = timeToDecimal(start);
+      const horaFin   = timeToDecimalRelative(start, end); // puede ser > 24
+
       const resSimulador = await apiClient.post('/simulator/calculate', {
         deviceId: disp.id,
-        startHour: timeToDecimal(start),
+        startHour,
         duracion: duracionNum,
         potencia: potenciaNum,
+        horaFin, // ✅ informar al backend de la hora fin real
       });
 
       setSimulacion(resSimulador.data);
@@ -253,6 +326,7 @@ export default function SimuladorScreen() {
     }
   };
 
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       calcular(selectedDevice, startTime, endTime, editedPotencia);
@@ -260,6 +334,7 @@ export default function SimuladorScreen() {
 
     return () => clearTimeout(timeoutId);
   }, [selectedDevice, startTime, endTime, editedPotencia]);
+
 
   const handleProgramar = async () => {
     if (!selectedDevice || !simulacion) return;
@@ -279,39 +354,42 @@ export default function SimuladorScreen() {
       }
 
       const horaInicioDecimal = timeToDecimal(startTime);
-      const horaFinDecimal = Math.min(24, timeToDecimal(endTime));
+      // ✅ FIX: NO se limita a 24; si cruza medianoche, horaFin puede ser > 24
       const duracionNum = duracionActual;
 
       const res = await crearProgramacion({
         horaInicio: horaInicioDecimal,
-        horaFin: horaFinDecimal,
+        horaFin: horaFinDecimal,       // ✅ puede ser > 24 (ej: 25.25 = 01:15 día siguiente)
         duracionHoras: duracionNum,
         potenciaW: potenciaIngresada,
         costeEstimado: parseFloat(simulacion.costeTotalEuros),
         id_dispositivo: selectedDevice.id,
       });
 
-      // ✅ CAMBIO: horaFin añadida, duracion como número
       const nuevaProg = {
         id: res.data.id,
         nombre: selectedDevice.nombre,
         potencia: potenciaIngresada.toString(),
-        duracion: duracionNum,                                              // ✅ número
+        duracion: duracionNum,
         horaInicio: horaInicioDecimal,
-        horaFin: horaFinDecimal,                                           // ✅ añadido
+        horaFin: horaFinDecimal,
         coste: parseFloat(simulacion.costeTotalEuros).toFixed(2),
         kwh: (potenciaIngresada * duracionNum).toFixed(2),
       };
 
       setProgramaciones((prev) => [...prev, nuevaProg]);
 
-      Alert.alert('¡Añadido! ✅', `${selectedDevice.nombre} programado a las ${formatTime(startTime)}.`);
+      Alert.alert(
+        '¡Añadido! ✅',
+        `${selectedDevice.nombre} programado a las ${formatTime(startTime)}${endIsNextDay ? ' (termina el día siguiente)' : ''}.`
+      );
     } catch (error) {
       Alert.alert('Error', 'No se pudo guardar la programación en el servidor.');
     } finally {
       setSaving(false);
     }
   };
+
 
   const eliminarProgramacion = (id: string | number) => {
     Alert.alert(
@@ -337,6 +415,7 @@ export default function SimuladorScreen() {
     );
   };
 
+
   if (loading && devices.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -345,17 +424,23 @@ export default function SimuladorScreen() {
     );
   }
 
+
   const isPastHour = timeToDecimal(startTime) < currentRealHour;
+
+  // ✅ FIX: advertencia de precios día siguiente
+  const needsNextDayPrices = horaFinDecimal > 24;
 
   const chartLabels =
     simulacion && simulacion.desglose.length > 0
       ? simulacion.desglose.map((d: any, index: number) => (index % 4 === 0 ? d.hora : ''))
       : ['--'];
 
+
   const chartData =
     simulacion && simulacion.desglose.length > 0
       ? simulacion.desglose.map((d: any) => toNumber(d.costeFranja))
       : [0];
+
 
   const franjaActual = simulacion?.recomendacion?.franja || '';
   const esCara = franjaActual.includes('CARA');
@@ -363,6 +448,7 @@ export default function SimuladorScreen() {
   const esIntermedia = !!simulacion?.recomendacion && !esCara && !esBarata;
 
   const etiquetaFranja = esCara ? 'cara' : esBarata ? 'barata' : 'intermedia';
+
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -377,6 +463,7 @@ export default function SimuladorScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.pageTitle}>Programador Diario</Text>
+
 
           {/* ── Card 1: Selección de dispositivo ── */}
           <View style={styles.card}>
@@ -408,9 +495,11 @@ export default function SimuladorScreen() {
             </ScrollView>
           </View>
 
+
           {/* ── Card 2: Curva de precios + Time pickers ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>2. Elige la mejor hora</Text>
+
 
             {devices.length === 0 ? (
               <View style={{ height: 180, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }}>
@@ -447,18 +536,21 @@ export default function SimuladorScreen() {
               </View>
             )}
 
+
             {/* Time pickers */}
             <View style={styles.timePickerContainer}>
               <Text style={styles.sliderLabel}>
                 Franja:{' '}
                 <Text style={styles.hourValue}>{formatTime(startTime)}</Text>
                 {' '}→{' '}
-                <Text style={styles.hourValue}>{formatTime(endTime)}</Text>
+                {/* ✅ FIX: muestra (+1) si la hora fin es del día siguiente */}
+                <Text style={[styles.hourValue, endIsNextDay && { color: '#e67e22' }]}>
+                  {formatTime(endTime, endIsNextDay)}
+                </Text>
                 {'  '}
                 <Text style={{ fontSize: 12, color: '#95a5a6' }}>({formatDuracion(duracionActual)})</Text>
               </Text>
 
-              {/* ✅ CAMBIO: mensaje más descriptivo */}
               {isPastHour && (
                 <View style={styles.pastWarningBox}>
                   <Text style={styles.pastWarning}>
@@ -467,6 +559,24 @@ export default function SimuladorScreen() {
                   <Text style={styles.pastWarningSub}>
                     Puedes continuar, y el sistema contabilizará el consumo de esas horas previas.
                   </Text>
+                </View>
+              )}
+
+              {/* ✅ NUEVO: advertencia de precios día siguiente */}
+              {needsNextDayPrices && (
+                <View style={styles.nextDayWarningBox}>
+                  <Text style={styles.nextDayWarning}>
+                    🌙 La programación cruza la medianoche.
+                  </Text>
+                  {simulacion?.sinPreciosMañana ? (
+                    <Text style={styles.nextDayWarningSub}>
+                      ⚠️ Los precios del día siguiente aún no están disponibles. El coste mostrado es estimado.
+                    </Text>
+                  ) : (
+                    <Text style={styles.nextDayWarningSub}>
+                      Los tramos del día siguiente usarán los precios de mañana disponibles.
+                    </Text>
+                  )}
                 </View>
               )}
 
@@ -480,11 +590,13 @@ export default function SimuladorScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.timePickerBtn}
+                  style={[styles.timePickerBtn, endIsNextDay && styles.timePickerBtnNextDay]}
                   onPress={() => setShowEndPicker(true)}
                 >
                   <Text style={styles.timePickerLabel}>🕑 Fin</Text>
-                  <Text style={styles.timePickerValue}>{formatTime(endTime)}</Text>
+                  <Text style={[styles.timePickerValue, endIsNextDay && { color: '#e67e22' }]}>
+                    {formatTime(endTime, endIsNextDay)}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -494,15 +606,14 @@ export default function SimuladorScreen() {
                   mode="time"
                   is24Hour={true}
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  minuteInterval={5}
+                  minuteInterval={1}
                   onChange={(_, selected) => {
                     setShowStartPicker(false);
                     if (selected) {
-                      if (selected >= endTime) {
-                        const newEnd = new Date(selected.getTime() + 60 * 60 * 1000);
-                        setEndTime(newEnd);
-                      }
                       setStartTime(selected);
+                      // ✅ FIX: al cambiar inicio, recalcular fin manteniendo duración
+                      const durMs = getDuracion(startTime, endTime) * 60 * 60 * 1000;
+                      setEndTime(new Date(selected.getTime() + durMs));
                     }
                   }}
                 />
@@ -514,14 +625,12 @@ export default function SimuladorScreen() {
                   mode="time"
                   is24Hour={true}
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  minuteInterval={5}
+                  minuteInterval={1}
                   onChange={(_, selected) => {
                     setShowEndPicker(false);
                     if (selected) {
-                      if (selected <= startTime) {
-                        Alert.alert('Hora inválida', 'La hora de fin debe ser posterior a la de inicio.');
-                        return;
-                      }
+                      // ✅ FIX: ya NO se rechaza si selected <= startTime
+                      // Se interpreta como día siguiente automáticamente en getDuracion/timeToDecimalRelative
                       setEndTime(selected);
                     }
                   }}
@@ -530,10 +639,12 @@ export default function SimuladorScreen() {
             </View>
           </View>
 
+
           {/* ── Card 3: Ajustes y confirmación ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>3. Ajustes y Confirmación</Text>
             <Text style={styles.mainCost}>{simulacion ? simulacion.costeTotalEuros : '0.00'} €</Text>
+
 
             {simulacion && (
               <View style={styles.detailsContainer}>
@@ -554,7 +665,6 @@ export default function SimuladorScreen() {
                   </View>
 
                   <View style={styles.editInputGroup}>
-                    {/* ✅ CAMBIO: label sin "(h)" y valor con formatDuracion */}
                     <Text style={styles.editLabel}>Duración</Text>
                     <TextInput
                       style={[styles.editInput, { backgroundColor: '#f1f2f6', color: '#95a5a6' }]}
@@ -607,6 +717,7 @@ export default function SimuladorScreen() {
             </TouchableOpacity>
           </View>
 
+
           {/* ── Card 4: Lista de programaciones ── */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Usos Programados para Hoy</Text>
@@ -616,7 +727,6 @@ export default function SimuladorScreen() {
               </Text>
             ) : (
               <ScrollWithIndicator maxHeight={220}>
-                {/* ✅ CAMBIO: muestra horaFin y formatDuracion, mismo estilo que EstadisticasScreen */}
                 {programaciones.map((prog) => (
                   <View key={prog.id} style={styles.progItem}>
                     <View style={{ flex: 1 }}>
@@ -625,8 +735,10 @@ export default function SimuladorScreen() {
                         <Text style={{ fontWeight: 'normal', fontSize: 12 }}>({prog.potencia} kW)</Text>
                       </Text>
                       <View style={styles.progHorarioRow}>
+                        {/* ✅ FIX: decimalToTimeStr normaliza valores > 24 */}
                         <Text style={styles.progTime}>
                           🕐 {decimalToTimeStr(prog.horaInicio)} – {decimalToTimeStr(prog.horaFin)}
+                          {prog.horaFin > 24 ? ' (+1)' : ''}
                         </Text>
                         <Text style={styles.progDuracion}>⏱ {formatDuracion(prog.duracion)}</Text>
                       </View>
@@ -650,6 +762,7 @@ export default function SimuladorScreen() {
     </SafeAreaView>
   );
 }
+
 
 
 const styles = StyleSheet.create({
@@ -694,7 +807,7 @@ const styles = StyleSheet.create({
   timePickerContainer: { marginTop: 12, paddingHorizontal: 5 },
   sliderLabel: { fontSize: 14, color: '#34495e', textAlign: 'center', marginBottom: 10 },
   hourValue: { fontWeight: 'bold', color: '#3498db', fontSize: 15 },
-  // ✅ NUEVO: contenedor del aviso de hora pasada
+  // Aviso hora pasada
   pastWarningBox: {
     backgroundColor: '#fdf2e9',
     borderLeftWidth: 3,
@@ -715,6 +828,27 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontStyle: 'italic',
   },
+  // ✅ NUEVO: aviso cruce de medianoche
+  nextDayWarningBox: {
+    backgroundColor: '#eaf0fb',
+    borderLeftWidth: 3,
+    borderLeftColor: '#2980b9',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  nextDayWarning: {
+    color: '#1a5276',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  nextDayWarningSub: {
+    color: '#2980b9',
+    fontSize: 11,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
   timePickerRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -729,6 +863,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     alignItems: 'center',
     width: '44%',
+  },
+  // ✅ NUEVO: estilo especial botón fin cuando es día siguiente
+  timePickerBtnNextDay: {
+    backgroundColor: '#fef9e7',
+    borderColor: '#e67e22',
   },
   timePickerLabel: {
     fontSize: 12,
@@ -799,7 +938,6 @@ const styles = StyleSheet.create({
     borderBottomColor: '#ecf0f1',
   },
   progName: { fontWeight: 'bold', color: '#2c3e50', fontSize: 15 },
-  // ✅ NUEVO: fila de horario con hora fin y duración
   progHorarioRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
