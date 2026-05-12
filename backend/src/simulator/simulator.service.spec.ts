@@ -68,13 +68,13 @@ describe('SimulatorService', () => {
   describe('Validaciones de entrada', () => {
     it('debería lanzar BadRequestException si startHour es negativo', async () => {
       await expect(service.calculateCost(1, 1, -1)).rejects.toThrow(
-        new BadRequestException('La hora de inicio debe estar entre 0 y 23.99'),
+        new BadRequestException('La hora de inicio debe estar entre 0 y 23.9999'),
       );
     });
 
     it('debería lanzar BadRequestException si startHour es 24 o mayor', async () => {
       await expect(service.calculateCost(1, 1, 24)).rejects.toThrow(
-        new BadRequestException('La hora de inicio debe estar entre 0 y 23.99'),
+        new BadRequestException('La hora de inicio debe estar entre 0 y 23.9999'),
       );
     });
 
@@ -112,9 +112,9 @@ describe('SimulatorService', () => {
 
       const result = await service.calculateCost(1, 1, 10);
 
-      // 2.0 kW × 1.5 h × 0.10 €/kWh = 0.30 €
-      expect(result.costeTotalEuros).toBe('0.30');
-      expect(result.consumoTotalKwh).toBe('3.00');
+      // 2.0 kW × 1.5 h × 0.10 €/kWh = 0.3000 €
+      expect(result.costeTotalEuros).toBe('0.3000');
+      expect(result.consumoTotalKwh).toBe('3.0000'); // ← CORREGIDO
       expect(result.dispositivo).toBe('Lavadora');
     });
 
@@ -124,8 +124,8 @@ describe('SimulatorService', () => {
       // Potencia custom: 1.0 kW, Duración custom: 2 h
       const result = await service.calculateCost(1, 1, 10, 2, 1.0);
 
-      // 1.0 kW × 2 h × 0.10 €/kWh = 0.20 €
-      expect(result.costeTotalEuros).toBe('0.20');
+      // 1.0 kW × 2 h × 0.10 €/kWh = 0.2000 €
+      expect(result.costeTotalEuros).toBe('0.2000');
       expect(result.potencia).toBe('1 kW');
       expect(result.duracionTotal).toBe('2 h');
     });
@@ -138,8 +138,8 @@ describe('SimulatorService', () => {
 
       const result = await service.calculateCost(1, 1, 10);
 
-      // 1h a 0.10 + 0.5h a 0.20 → 2kW*(1*0.10 + 0.5*0.20) = 2*(0.10+0.10) = 0.40 €
-      expect(result.costeTotalEuros).toBe('0.40');
+      // 1h a 0.10 + 0.5h a 0.20 → 2kW*(1*0.10 + 0.5*0.20) = 2*(0.10+0.10) = 0.4000 €
+      expect(result.costeTotalEuros).toBe('0.4000');
       expect(result.desglose).toHaveLength(2);
     });
 
@@ -152,8 +152,8 @@ describe('SimulatorService', () => {
 
       // Empieza a las 10:30 — en hora 10 solo quedan 0.5h, luego 1h en hora 11
       expect(result.horaInicio).toBe('10:30');
-      // 2kW × (0.5h + 1h) × 0.10 = 0.30 €
-      expect(result.costeTotalEuros).toBe('0.30');
+      // 2kW × (0.5h + 1h) × 0.10 = 0.3000 €
+      expect(result.costeTotalEuros).toBe('0.3000');
     });
   });
 

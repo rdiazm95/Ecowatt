@@ -3,6 +3,7 @@ import { DevicesService } from './devices.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Device } from './entities/device.entity';
 import { NotFoundException } from '@nestjs/common';
+import { Programacion } from '../programaciones/entities/programacion.entity'; // ← AÑADIDO
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOCKS
@@ -14,6 +15,19 @@ const mockDevicesRepository = {
   find: jest.fn(),
   findOne: jest.fn(),
   delete: jest.fn(),
+};
+
+// ← AÑADIDO: mock del queryBuilder que usa update() al propagar potencia
+const mockQueryBuilder = {
+  update: jest.fn().mockReturnThis(),
+  set: jest.fn().mockReturnThis(),
+  where: jest.fn().mockReturnThis(),
+  execute: jest.fn().mockResolvedValue({ affected: 1 }),
+};
+
+// ← AÑADIDO: mock del repositorio de Programacion
+const mockProgramacionRepository = {
+  createQueryBuilder: jest.fn(() => mockQueryBuilder),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,10 +53,18 @@ describe('DevicesService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
+    // ← AÑADIDO: resetear también los mocks del queryBuilder
+    mockQueryBuilder.update.mockReturnThis();
+    mockQueryBuilder.set.mockReturnThis();
+    mockQueryBuilder.where.mockReturnThis();
+    mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+    mockProgramacionRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DevicesService,
         { provide: getRepositoryToken(Device), useValue: mockDevicesRepository },
+        { provide: getRepositoryToken(Programacion), useValue: mockProgramacionRepository }, // ← AÑADIDO
       ],
     }).compile();
 
