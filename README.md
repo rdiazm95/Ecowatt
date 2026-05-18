@@ -45,7 +45,7 @@ A través de la integración con los precios oficiales de la luz (**PVPC vía AP
 | **Navegación** | React Navigation v7 (Bottom Tabs + Native Stack) |
 | **HTTP** | Axios |
 | **Almacenamiento seguro** | Expo Secure Store (tokens JWT) |
-| **Notificaciones** | expo-notifications |
+| **Notificaciones** | Firebase-Notificaciones |
 | **Gráficas** | react-native-chart-kit + react-native-svg |
 | **Build/distribución** | EAS Build |
 
