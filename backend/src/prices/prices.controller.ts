@@ -25,6 +25,14 @@ export class PricesController {
     };
   }
 
+  @Get('health')
+  getHealth() {
+    return {
+      success: true,
+      message: 'Api de precios funcionando correctamente',
+      timestamp: new Date(),
+    };
+  }
   // ─────────────────────────────────────────
   // Precios por fecha como path param
   // Usado por EstadisticasScreen para cargar tramos caros de días anteriores
